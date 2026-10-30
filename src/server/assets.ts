@@ -66,12 +66,12 @@ export class Assets {
         const z = new ZipReader(j);
         if (z.has("assets/minecraft/textures/item/diamond_sword.png") || z.has("assets/minecraft/lang/en_us.json")) {
           this.jar = z;
-          this.log(`Texturen aus ${path.basename(j)} geladen`);
+          this.log(`Loaded textures from ${path.basename(j)}`);
           break;
         }
         z.close();
       } catch (e) {
-        this.log(`${path.basename(j)} konnte nicht gelesen werden: ${(e as Error).message}`);
+        this.log(`Could not read ${path.basename(j)}: ${(e as Error).message}`);
       }
     }
     // Sprachdatei
@@ -83,7 +83,7 @@ export class Assets {
           this.langName = this.language;
           break;
         } catch (e) {
-          this.log(`Sprachdatei ${c} ungültig: ${(e as Error).message}`);
+          this.log(`Invalid language file ${c}: ${(e as Error).message}`);
         }
       }
     }

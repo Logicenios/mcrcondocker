@@ -359,14 +359,14 @@ export class MockWorld {
   handle(raw: string): string {
     const cmd = raw.trim().replace(/^\//, "");
     const lower = cmd.toLowerCase();
-    if (lower === "list" || lower === "list uuids") {
+    if (["list", "list uuids", "minecraft:list", "minecraft:list uuids"].includes(lower)) {
       this.advance();
       const on = this.online();
       // wie der echte Server: Text in Stücken, nach 32 Stücken "..." (siehe docs/datenformat.md)
       const pieces = ["There are ", String(on.length), " of a max of ", "20", " players online: "];
       on.forEach((p, i) => {
         if (i) pieces.push(", ");
-        pieces.push(...(lower === "list" ? [p.name] : [p.name, " (", p.uuid, ")"]));
+        pieces.push(...(!lower.endsWith(" uuids") ? [p.name] : [p.name, " (", p.uuid, ")"]));
       });
       return pieces.length > 32 ? pieces.slice(0, 32).join("") + "..." : pieces.join("");
     }

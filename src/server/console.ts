@@ -1,3 +1,4 @@
+import { diagnostic, DiagnosticError, formatDiagnostic, type DiagnosticMessage } from "../shared/diagnostic-messages.js";
 // Manuelle Konsolenbefehle. Funktionieren auch während der Pause.
 import type { Locale } from "../shared/translations.js";
 import { EventEmitter } from "node:events";
@@ -11,7 +12,7 @@ const MAX_HISTORY = 200;
 export type ConsoleResult =
   | { kind: "done"; entry: ConsoleEntry }
   | { kind: "needs_confirmation"; reason: string }
-  | { kind: "invalid"; message: string };
+  | { kind: "invalid"; message: string; messageData: DiagnosticMessage };
 
 export class ConsoleService extends EventEmitter {
   private history: ConsoleEntry[] = [];
@@ -33,8 +34,8 @@ export class ConsoleService extends EventEmitter {
 
   async run(input: string, confirmed: boolean, locale: Locale = "de", actor?: string): Promise<ConsoleResult> {
     const command = input.trim().replace(/^\/+/, "");
-    if (!command) return { kind: "invalid", message: "Leerer Befehl" };
-    if (/[\r\n]/.test(command)) return { kind: "invalid", message: "Befehl darf keine Zeilenumbrüche enthalten" };
+    if (!command) return { kind: "invalid", message: "Empty command", messageData: diagnostic("consoleEmpty") };
+    if (/[\r\n]/.test(command)) return { kind: "invalid", message: "Command must not contain line breaks", messageData: diagnostic("consoleNewline") };
     const reason = dangerousReason(command, this.extraDangerous, 0, locale);
     if (reason && !confirmed) return { kind: "needs_confirmation", reason };
     const started = Date.now();
@@ -45,8 +46,9 @@ export class ConsoleService extends EventEmitter {
       entry = { id: this.nextId++, at: started, command, output: r.body, ok: true, durationMs: r.durationMs };
     } catch (e) {
       const msg = (e as Error).message;
-      this.diag.recordRaw({ at: Date.now(), kind: "console", command, body: "", fragments: 0, bytes: 0, durationMs: Date.now() - started, error: msg });
-      entry = { id: this.nextId++, at: started, command, output: `Fehler: ${msg}`, ok: false, durationMs: Date.now() - started };
+      this.diag.recordRaw({ at: Date.now(), kind: "console", command, body: "", fragments: 0, bytes: 0, durationMs: Date.now() - started, error: msg, ...(e instanceof DiagnosticError ? { errorData: e.messageData } : {}) });
+      const outputData = diagnostic("commandFailure", { error: msg }, e instanceof DiagnosticError ? { error: e.messageData } : undefined);
+      entry = { id: this.nextId++, at: started, command, output: formatDiagnostic("en", outputData), outputData, ok: false, durationMs: Date.now() - started };
     }
     this.audit?.(command, entry.ok, entry.output, actor);
     this.history.push(entry);

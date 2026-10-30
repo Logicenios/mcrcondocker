@@ -3,7 +3,8 @@
   import { session } from "../lib/session.svelte";
   import MinecraftIcon from "./MinecraftIcon.svelte";
   import LanguagePicker from "./LanguagePicker.svelte";
-  import { t as tr } from "../lib/i18n.svelte";
+  import { formatDiagnostic } from "../../shared/diagnostic-messages";
+  import { t as tr, language } from "../lib/i18n.svelte";
   import { api } from "../lib/api";
   import { ago, time, coord } from "../lib/format";
   import { live } from "../lib/live.svelte";
@@ -11,6 +12,7 @@
   let busy = $state(false);
 
   const s = $derived(live.status);
+  const statusMessage = $derived(s?.messageData ? formatDiagnostic(language.locale, s.messageData) : s?.message);
   const conn = $derived.by(() => {
     if (!live.liveConnected)
       return { cls: "error", label: "Dashboard nicht erreichbar" };
@@ -21,7 +23,7 @@
       case "paused":
         return { cls: "paused", label: "Pausiert" };
       case "connecting":
-        return { cls: "connecting", label: "Verbinde …" };
+        return { cls: "connecting", label: "Wartet auf Minecraft RCON" };
       case "auth_failed":
         return { cls: "error", label: "RCON-Passwort falsch" };
       default:
@@ -73,7 +75,7 @@
   <div class="status {conn.cls}" role="status" aria-live="polite">
     <span class="light"></span>
     <span class="label">{tr(conn.label)}</span>
-    {#if s?.message && conn.cls === "error"}<span class="msg">{s.message}</span
+    {#if statusMessage && conn.cls === "error"}<span class="msg">{statusMessage}</span
       >{/if}
   </div>
 
@@ -131,7 +133,7 @@
   </div>
 {:else if conn.cls === "error"}
   <div class="banner error">
-    {tr(conn.label)}{s?.message ? `: ${s.message}` : ""}{tr(
+    {tr(conn.label)}{statusMessage ? `: ${statusMessage}` : ""}{tr(
       ". Es wird automatisch neu verbunden. Angezeigt wird der letzte bekannte Stand.",
     )}
   </div>

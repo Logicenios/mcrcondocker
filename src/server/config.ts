@@ -1,3 +1,4 @@
+import { DiagnosticError } from "../shared/diagnostic-messages.js";
 // Konfiguration ausschließlich aus Umgebungsvariablen (siehe .env.example).
 import path from "node:path";
 
@@ -20,13 +21,13 @@ export interface Config {
   logLevel: string;
 }
 
-export class ConfigError extends Error {}
+export class ConfigError extends DiagnosticError {}
 
 function int(env: NodeJS.ProcessEnv, key: string, def: number, min: number, max: number): number {
   const raw = env[key];
   if (raw === undefined || raw === "") return def;
   const n = Number(raw);
-  if (!Number.isFinite(n)) throw new ConfigError(`${key} muss eine Zahl sein`);
+  if (!Number.isFinite(n)) throw new ConfigError("configNumber", { field: key });
   return Math.min(max, Math.max(min, n));
 }
 
@@ -42,15 +43,15 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   let dashboardPassword = env.DASHBOARD_PASSWORD ?? "";
   if (!dashboardPassword) {
     if (mock) dashboardPassword = "mock";
-    else throw new ConfigError("DASHBOARD_PASSWORD ist nicht gesetzt");
+    else throw new ConfigError("configRequired", { field: "DASHBOARD_PASSWORD" });
   }
   if (!mock && dashboardPassword.length < 8) {
-    throw new ConfigError("DASHBOARD_PASSWORD muss mindestens 8 Zeichen lang sein");
+    throw new ConfigError("configPassword");
   }
   const rconHost = env.RCON_HOST ?? "";
   const rconPassword = env.RCON_PASSWORD ?? "";
-  if (!mock && !rconHost) throw new ConfigError("RCON_HOST ist nicht gesetzt");
-  if (!mock && !rconPassword) throw new ConfigError("RCON_PASSWORD ist nicht gesetzt");
+  if (!mock && !rconHost) throw new ConfigError("configRequired", { field: "RCON_HOST" });
+  if (!mock && !rconPassword) throw new ConfigError("configRequired", { field: "RCON_PASSWORD" });
   const secureRaw = (env.COOKIE_SECURE ?? "auto").trim().toLowerCase();
   return {
     port: int(env, "PORT", 8080, 1, 65535),

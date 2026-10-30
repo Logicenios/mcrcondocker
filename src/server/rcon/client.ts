@@ -1,3 +1,4 @@
+import { diagnostic, DiagnosticError, type DiagnosticMessage } from "../../shared/diagnostic-messages.js";
 import { EventEmitter } from "node:events";
 import net from "node:net";
 import {
@@ -50,12 +51,12 @@ interface InFlight {
   timer: NodeJS.Timeout;
 }
 
-export class RconError extends Error {
+export class RconError extends DiagnosticError {
   constructor(
-    message: string,
+    message: DiagnosticMessage,
     readonly code: "not_connected" | "timeout" | "connection_lost" | "too_long" | "stopped",
   ) {
-    super(message);
+    super(message.id, message.params, message.children);
   }
 }
 
@@ -86,6 +87,9 @@ export class RconClient extends EventEmitter {
   private connectTimer: NodeJS.Timeout | null = null;
   private _state: RconState = "disconnected";
   private _lastError: string | null = null;
+  private _lastErrorData: DiagnosticMessage | null = null;
+  private _lastErrorContext: Record<string, string> | null = null;
+  private _hasConnected = false;
   private _sentCount = 0;
   private readonly opts: Required<RconOptions>;
 
@@ -109,6 +113,10 @@ export class RconClient extends EventEmitter {
     return this._lastError;
   }
 
+  get lastErrorData(): DiagnosticMessage | null { return this._lastErrorData; }
+  get lastErrorContext(): Record<string, string> | null { return this._lastErrorContext; }
+  get hasConnected(): boolean { return this._hasConnected; }
+
   /** Anzahl gesendeter Befehle seit Start */
   get sentCount(): number {
     return this._sentCount;
@@ -127,7 +135,7 @@ export class RconClient extends EventEmitter {
   stop(): void {
     this.clearTimers();
     this.setState("stopped");
-    this.failAll(new RconError("RCON-Client wurde beendet", "stopped"));
+    this.failAll(new RconError(diagnostic("rconStopped"), "stopped"));
     this.socket?.destroy();
     this.socket = null;
   }
@@ -138,7 +146,7 @@ export class RconClient extends EventEmitter {
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         this.off("state", onState);
-        reject(new RconError(this._lastError ?? "Keine Verbindung", "not_connected"));
+        reject(new RconError(this._lastErrorData ?? diagnostic("rconNotConnected"), "not_connected"));
       }, timeoutMs);
       const onState = (s: RconState) => {
         if (s === "connected") {
@@ -153,16 +161,16 @@ export class RconClient extends EventEmitter {
 
   send(command: string, priority: Priority = "normal", timeoutMs?: number): Promise<RconResponse> {
     if (this._state === "stopped") {
-      return Promise.reject(new RconError("RCON-Client wurde beendet", "stopped"));
+      return Promise.reject(new RconError(diagnostic("rconStopped"), "stopped"));
     }
     if (this._state !== "connected") {
       return Promise.reject(
-        new RconError(this._lastError ?? "Keine RCON-Verbindung", "not_connected"),
+        new RconError(this._lastErrorData ?? diagnostic("rconNotConnected"), "not_connected"),
       );
     }
     if (Buffer.byteLength(command, "utf8") > MAX_OUTGOING_BODY_BYTES) {
       return Promise.reject(
-        new RconError(`Befehl zu lang (max. ${MAX_OUTGOING_BODY_BYTES} Bytes)`, "too_long"),
+        new RconError(diagnostic("rconTooLong", { bytes: MAX_OUTGOING_BODY_BYTES }), "too_long"),
       );
     }
     return new Promise((resolve, reject) => {
@@ -179,9 +187,17 @@ export class RconClient extends EventEmitter {
 
   // --- intern -------------------------------------------------------------
 
-  private setState(state: RconState, error?: string): void {
-    if (error !== undefined) this._lastError = error;
-    if (state === "connected") this._lastError = null;
+  private setState(state: RconState, error?: DiagnosticMessage): void {
+    if (error !== undefined) {
+      this._lastErrorData = error;
+      this._lastError = new DiagnosticError(error.id, error.params, error.children).message;
+    }
+    if (state === "connected") {
+      this._hasConnected = true;
+      this._lastError = null;
+      this._lastErrorData = null;
+      this._lastErrorContext = null;
+    }
     const changed = state !== this._state;
     this._state = state;
     if (changed) this.emit("state", state, this._lastError);
@@ -204,7 +220,7 @@ export class RconClient extends EventEmitter {
     socket.setKeepAlive(true, 30_000);
 
     this.connectTimer = setTimeout(() => {
-      this.handleDisconnect(socket, "Zeitüberschreitung beim Verbinden");
+      this.handleDisconnect(socket, diagnostic("rconConnectTimeout"));
     }, this.opts.connectTimeoutMs);
 
     socket.on("connect", () => {
@@ -216,16 +232,16 @@ export class RconClient extends EventEmitter {
       try {
         packets = this.decoder.push(chunk);
       } catch (e) {
-        this.handleDisconnect(socket, `Protokollfehler: ${(e as Error).message}`);
+        this.handleDisconnect(socket, diagnostic("rconProtocol", { error: (e as Error).message }, e instanceof DiagnosticError ? { error: e.messageData } : undefined));
         return;
       }
       for (const p of packets) this.handlePacket(socket, p);
     });
     socket.on("error", (err: NodeJS.ErrnoException) => {
-      this.handleDisconnect(socket, describeSocketError(err));
+      this.handleDisconnect(socket, describeSocketError(err), "disconnected", "connection_lost", { code: err.code ?? "UNKNOWN", ...(err.syscall ? { syscall: err.syscall } : {}) });
     });
     socket.on("close", () => {
-      this.handleDisconnect(socket, this._lastError ?? "Verbindung geschlossen");
+      this.handleDisconnect(socket, this._lastErrorData ?? diagnostic("rconClosed"));
     });
   }
 
@@ -237,7 +253,7 @@ export class RconClient extends EventEmitter {
       if (this.connectTimer) clearTimeout(this.connectTimer);
       this.connectTimer = null;
       if (p.id === -1) {
-        this.handleDisconnect(socket, "RCON-Passwort falsch", "auth_failed");
+        this.handleDisconnect(socket, diagnostic("rconAuth"), "auth_failed");
         return;
       }
       if (p.id !== this.authId) return;
@@ -272,7 +288,7 @@ export class RconClient extends EventEmitter {
       this.pump();
     } else if (p.id === -1) {
       // Server hält uns für nicht authentifiziert
-      this.handleDisconnect(socket, "Server meldet: nicht authentifiziert", "auth_failed");
+      this.handleDisconnect(socket, diagnostic("rconNotAuthenticated"), "auth_failed");
     }
   }
 
@@ -286,7 +302,7 @@ export class RconClient extends EventEmitter {
     const timer = setTimeout(() => {
       // Ohne vollständige Antwort ist die Zuordnung der folgenden Pakete
       // unsicher, deshalb Verbindung neu aufbauen.
-      this.handleDisconnect(socket, `Zeitüberschreitung bei Befehl (${job.timeoutMs} ms)`, "disconnected", "timeout");
+      this.handleDisconnect(socket, diagnostic("rconCommandTimeout", { milliseconds: job.timeoutMs }), "disconnected", "timeout");
     }, job.timeoutMs);
     this.inFlight = {
       job,
@@ -304,9 +320,10 @@ export class RconClient extends EventEmitter {
 
   private handleDisconnect(
     socket: net.Socket,
-    reason: string,
+    reason: DiagnosticMessage,
     state: RconState = "disconnected",
     code: RconError["code"] = "connection_lost",
+    context: Record<string, string> | null = null,
   ): void {
     if (socket !== this.socket) return; // alte Verbindung
     this.socket = null;
@@ -325,6 +342,7 @@ export class RconClient extends EventEmitter {
     // könnten sonst unerwartet später ausgeführt werden.
     this.failAll(new RconError(reason, "connection_lost"));
 
+    this._lastErrorContext = context;
     this.setState(state, reason);
     const delay = this.backoffMs;
     this.backoffMs = Math.min(this.backoffMs * 2, this.opts.maxBackoffMs);
@@ -352,22 +370,27 @@ export class RconClient extends EventEmitter {
   }
 }
 
-function describeSocketError(err: NodeJS.ErrnoException): string {
+export function describeSocketError(err: NodeJS.ErrnoException): DiagnosticMessage {
   switch (err.code) {
-    case "ECONNREFUSED":
-      return "Verbindung abgelehnt (RCON aktiv? Port richtig?)";
+    case "ECONNREFUSED": return diagnostic("rconRefused");
     case "ENOTFOUND":
-    case "EAI_AGAIN":
-      return "RCON-Host nicht gefunden";
-    case "ETIMEDOUT":
-      return "Zeitüberschreitung beim Verbinden";
-    case "ECONNRESET":
-      return "Verbindung vom Server getrennt";
+    case "EAI_AGAIN": return diagnostic("rconHostNotFound");
+    case "ETIMEDOUT": return diagnostic("rconConnectTimeout");
+    case "ECONNRESET": return diagnostic("rconReset");
     case "EHOSTUNREACH":
-    case "ENETUNREACH":
-      return "Host nicht erreichbar";
-    default:
-      // bewusst ohne err.message: die enthält Host und Port, die nicht ins Frontend sollen
-      return `Verbindungsfehler (${err.code ?? "unbekannt"})`;
+    case "ENETUNREACH": return diagnostic("rconUnreachable");
+    // Do not send the socket message/address or credentials to browsers/logs.
+    default: return diagnostic("rconSocket", { code: err.code ?? "UNKNOWN" });
   }
+}
+
+/** Startup refusal is recoverable; auth/DNS/protocol failures remain visible as errors. */
+export function waitingForRcon(client: RconClient): boolean {
+  return !client.hasConnected && (client.state === "connecting" || client.state === "disconnected")
+    && (!client.lastErrorData || client.lastErrorData.id === "rconRefused" || client.lastErrorData.id === "rconConnectTimeout");
+}
+
+export function rconLogMessage(client: RconClient): string {
+  const state = waitingForRcon(client) ? "waiting for Minecraft RCON" : client.state;
+  return `RCON: ${state}${client.lastError ? ` (${client.lastError})` : ""}`;
 }

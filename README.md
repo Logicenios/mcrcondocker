@@ -23,9 +23,9 @@ Release history and upgrade notes: [Changelog](CHANGELOG.md).
 
 [Accounts, automatic backups, restore drills, readiness, resource packs, and CI](docs/operations.md) are documented in the operations runbook. Sign in as **admin** with your existing dashboard password; create viewer/operator accounts under **Users**.
 
-Choose **English** or **Deutsch** on the login page or in the top bar. The first visit follows the browser language (English fallback); the choice is saved on that browser. Dates, coordinates, game item names, item search, enchantments, effects, and action confirmations follow the selected language. Custom names, book titles, player names, commands, raw game responses, historical audit entries, and raw diagnostic context keep their original content. Parser warnings switch language through stable message IDs.
+Choose **English** or **Deutsch** on the login page or in the top bar. The first visit follows the browser language (English fallback); the choice is saved on that browser. Dates, coordinates, game item names, item search, enchantments, effects, and action confirmations follow the selected language. Custom names, book titles, player names, commands, raw game responses, historical audit entries, and raw diagnostic context keep their original content. Parser, connection and backend validation diagnostics switch language through stable message IDs. Container logs are English; `LANGUAGE_FILE` only selects fallback Minecraft item names, not a log locale.
 
-On **Map → Configure BlueMap**, enter your own complete map URL, such as `https://map.example.com/` or `http://192.168.1.50:8100/`. The dashboard saves it in SQLite, so it survives restarts and is available to other dashboard sessions. Each browser can switch between **BlueMap** and the existing **Coordinate map**. You can edit or remove the URL from the same settings panel.
+On **Map → Configure BlueMap**, enter your own complete map URL, such as `https://map.example.com/` or `http://192.168.1.50:8100/`. The dashboard saves it in SQLite, so it survives restarts and is available to other dashboard sessions. Each browser can switch between **BlueMap** and the existing **Coordinate map**. You can edit or remove the URL and choose **All dashboard users (external map)** or **Operators only** from the same settings panel. Same-origin maps always require an enabled operator session. Viewers see a localized login explanation instead of a denied iframe; there is no Minecraft player map code. See [Paper/EssentialsX, shared networking and protected BlueMap deployment](docs/operations.md#paperessentialsx-and-same-origin-bluemap).
 
 BlueMap is a separately installed Minecraft plugin/mod and web application; this dashboard embeds it. Its URL must be reachable from the browser. When the dashboard uses HTTPS, BlueMap must also use HTTPS. Configure BlueMap's web server or reverse proxy to permit framing by your dashboard origin; if it refuses, use **Open BlueMap** to open it in a new tab. The dashboard keeps its own frame policy restricted and never fetches user-provided map URLs on the backend. See the [BlueMap installation guide](https://bluemap.bluecolored.de/wiki/getting-started/Installation.html).
 
@@ -315,7 +315,7 @@ Alle Einstellungen werden über Umgebungsvariablen gesetzt.
 | `FLOODGATE_PREFIX` | `.` | Namenspräfix von Bedrock-Spielern (Floodgate `username-prefix`) |
 | `DANGEROUS_COMMANDS` | – | weitere Befehle, die eine Bestätigung brauchen (kommagetrennt) |
 | `SESSION_DAYS` | `30` | wie lange eine Anmeldung gültig bleibt |
-| `LANGUAGE_FILE` | `de_de` | Name der Sprachdatei in `data/assets` |
+| `LANGUAGE_FILE` | `de_de` | Minecraft-Itemnamen als Rückfall; keine Backend-Logsprache |
 | `PUID` / `PGID` | – | Container mit dieser Benutzer-/Gruppen-ID betreiben (bei Rechteproblemen) |
 | `TRUST_PROXY` | `false` | auf `true` setzen, wenn ein Reverse-Proxy davor sitzt |
 | `COOKIE_SECURE` | `auto` | `auto` = Secure-Cookie nur über HTTPS |
@@ -336,7 +336,7 @@ Die RCON-Zugangsdaten werden nie an den Browser geschickt und nie protokolliert.
 
 | Anzeige | Lösung |
 |---|---|
-| „Verbindung abgelehnt (RCON aktiv? Port richtig?)“ | `enable-rcon=true` gesetzt und Server neu gestartet? RCON-Port richtig? Firewall? |
+| “Connection refused. Waiting for Minecraft RCON…” | `enable-rcon=true` gesetzt und Server neu gestartet? RCON-Port richtig? Firewall? |
 | „RCON-Passwort falsch“ | `RCON_PASSWORD` mit `rcon.password` vergleichen |
 | „Zeitüberschreitung beim Verbinden“ | IP/Hostname falsch, Server offline oder Port blockiert |
 | `unauthorized` beim Laden des Images | Image-Namen prüfen: `ghcr.io/logicenios/mcrcondocker:latest` |

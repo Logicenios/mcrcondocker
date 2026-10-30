@@ -1,0 +1,2 @@
+§6There are §c1§6 out of maximum §c20§6 players online.
+§6default: §fOfflineAlex

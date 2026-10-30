@@ -13,7 +13,7 @@ import { Repo } from "./db/repo.js";
 import { MockWorld } from "./mock-world.js";
 import { Diagnostics } from "./parse/diagnostics.js";
 import { Poller } from "./poller.js";
-import { RconClient } from "./rcon/client.js";
+import { RconClient, rconLogMessage, waitingForRcon } from "./rcon/client.js";
 import { startMockRconServer } from "./rcon/mock-server.js";
 import { SessionTracker } from "./sessions.js";
 
@@ -37,7 +37,7 @@ async function main(): Promise<void> {
     config = loadConfig();
   } catch (e) {
     if (e instanceof ConfigError) {
-      console.error(`Konfigurationsfehler: ${e.message}. Siehe .env.example.`);
+      console.error(`Configuration error: ${e.message}. See .env.example.`);
       process.exit(1);
     }
     throw e;
@@ -71,18 +71,22 @@ async function main(): Promise<void> {
   const backups = new Backups(db, config.backup.directory, config.backup.keep);
   const app = await buildApp({ config, repo, poller, console: consoleService, actions, diag, rcon, assets, version, backups, renderAssets });
 
-  rcon.on("state", (s: string, err: string | null) => app.log.info(`RCON: ${s}${err ? ` (${err})` : ""}`));
+  rcon.on("state", () => {
+    const log = rconLogMessage(rcon);
+    if (rcon.state === "auth_failed" || (rcon.lastError && !waitingForRcon(rcon))) app.log.warn(log);
+    else app.log.info(log);
+  });
   await backups.start(config.backup.intervalMs, (e) => app.log.error({ err: e }, "SQLite backup failed"));
   rcon.start();
   poller.start();
   await app.listen({ port: config.port, host: config.host });
-  app.log.info(`MC-Dashboard ${version} läuft auf Port ${config.port}${config.mock ? " (MOCK-MODUS, Passwort: " + (process.env.DASHBOARD_PASSWORD ? "aus DASHBOARD_PASSWORD" : "mock") + ")" : ""}`);
+  app.log.info(`MC-Dashboard ${version} listening on port ${config.port}${config.mock ? " (MOCK MODE)" : ""}`);
 
   let shuttingDown = false;
   const shutdown = async (sig: string) => {
     if (shuttingDown) return;
     shuttingDown = true;
-    app.log.info(`${sig} empfangen, beende …`);
+    app.log.info(`${sig} received, shutting down …`);
     poller.stop();
     rcon.stop();
     await app.close().catch(() => {});

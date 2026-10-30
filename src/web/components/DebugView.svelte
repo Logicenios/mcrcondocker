@@ -179,7 +179,7 @@
       </div>
     </div>
     {#if snapshot.rcon.lastError}<div class="notice error">
-        {snapshot.rcon.lastError}
+        {snapshot.rcon.lastErrorData ? formatDiagnostic(language.locale, snapshot.rcon.lastErrorData) : snapshot.rcon.lastError}
       </div>{/if}
     {#if snapshot.status.degraded}<div class="notice warning">
         {tr("Rückfallweg aktiv: Spielerdaten nur eingeschränkt lesbar")}
@@ -347,7 +347,7 @@
                 </header>
                 <code class="raw-command">{response.command}</code
                 >{#if response.error}<div class="notice error">
-                    {response.error}
+                    {response.errorData ? formatDiagnostic(language.locale, response.errorData) : response.error}
                   </div>{/if}{#if response.truncatedForDisplay}<span
                     class="level warn">{tr("gekürzt")}</span
                   >{/if}

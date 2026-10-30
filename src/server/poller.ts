@@ -1,5 +1,6 @@
-import { diagnostic } from "../shared/diagnostic-messages.js";
+import { diagnostic, DiagnosticError, formatDiagnostic, type DiagnosticMessage } from "../shared/diagnostic-messages.js";
 // Regelmäßige RCON-Abfragen: Online-Liste, Spielerdaten, TPS/MSPT.
+import { stripLegacy } from "../shared/mctext.js";
 import { EventEmitter } from "node:events";
 import type {
   ConnectionState, LiveEvent, PlayerData, PlayerDetail, PlayerSummary, ServerStatus, TpsInfo,
@@ -9,7 +10,7 @@ import type { Diagnostics } from "./parse/diagnostics.js";
 import type { Translate } from "./parse/items.js";
 import { parsePlayer } from "./parse/player.js";
 import { parseEntityDump, parseList, parseMspt, parsePathValue, parseTps, parseUuidQuery } from "./parse/responses.js";
-import { RconError, type RconClient, type RconResponse } from "./rcon/client.js";
+import { RconError, waitingForRcon, type RconClient, type RconResponse } from "./rcon/client.js";
 import type { SessionTracker } from "./sessions.js";
 
 /** Bei Änderungen am Parser erhöhen → gespeicherte Rohdaten werden neu eingelesen */
@@ -25,7 +26,9 @@ export function dumpCommand(uuid: string): string {
 /** Ersatz für eine gekürzte /list-Antwort: eine Meldung pro Spieler (siehe parseUuidQuery) */
 export const UUID_QUERY_COMMAND = "execute as @a run data get entity @s UUID";
 
-const UNKNOWN_COMMAND = /^Unknown or incomplete command/i;
+const UNKNOWN_COMMAND = /^(?:Unknown or incomplete command|Unknown command(?:[.:]|$))/i;
+// Probe only after an explicit command rejection, never after a transport/parse error.
+const LIST_COMMANDS = ["minecraft:list uuids", "minecraft:list", "list uuids", "list"] as const;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 /** Snapshot spätestens nach dieser Zeit speichern, auch ohne Änderung */
 const SNAPSHOT_SAVE_INTERVAL_MS = 60_000;
@@ -57,6 +60,8 @@ export class Poller extends EventEmitter {
   private snapshots = new Map<string, CachedSnapshot>();
   private lastUpdate: number | null = null;
   private lastError: string | null = null;
+  private lastErrorData: DiagnosticMessage | null = null;
+  private listCommandIndex = 0;
   private onlineCount: number | null = null;
   private maxPlayers: number | null = null;
   private perf: TpsInfo | null = null;
@@ -161,7 +166,7 @@ export class Poller extends EventEmitter {
     try {
       await this.cycle();
     } catch (e) {
-      this.diag.warn("error", "poll-crash", diagnostic("pollCrash", { error: (e as Error).message }), (e as Error).stack);
+      this.diag.warn("error", "poll-crash", diagnostic("pollCrash", { error: (e as Error).message }, e instanceof DiagnosticError ? { error: e.messageData } : undefined), (e as Error).stack);
     } finally {
       this.inCycle = false;
     }
@@ -174,7 +179,7 @@ export class Poller extends EventEmitter {
       this.diag.recordRaw({ at: r.receivedAt, kind, command, body: r.body, fragments: r.fragments, bytes: r.bytes, durationMs: r.durationMs });
       return r;
     } catch (e) {
-      this.diag.recordRaw({ at: Date.now(), kind, command, body: "", fragments: 0, bytes: 0, durationMs: 0, error: (e as Error).message });
+      this.diag.recordRaw({ at: Date.now(), kind, command, body: "", fragments: 0, bytes: 0, durationMs: 0, error: (e as Error).message, ...(e instanceof DiagnosticError ? { errorData: e.messageData } : {}) });
       throw e;
     }
   }
@@ -182,6 +187,7 @@ export class Poller extends EventEmitter {
   private handleRconError(e: unknown): void {
     const msg = e instanceof Error ? e.message : String(e);
     this.lastError = msg;
+    this.lastErrorData = e instanceof DiagnosticError ? e.messageData : diagnostic("rconFailure");
     if (!this.paused) this.tracker.interrupt("rcon_error", Date.now());
     if (this.online.size) {
       this.online.clear();
@@ -194,14 +200,14 @@ export class Poller extends EventEmitter {
   async cycle(): Promise<void> {
     if (this.rcon.state !== "connected") {
       // Erster Verbindungsaufbau: abwarten (nach "connected" wird sofort abgefragt)
-      if (this.rcon.state === "connecting" && !this.rcon.lastError) return;
-      this.handleRconError(new RconError(this.rcon.lastError ?? "Keine RCON-Verbindung", "not_connected"));
+      if (waitingForRcon(this.rcon)) { this.emitStatus(); return; }
+      this.handleRconError(new RconError(this.rcon.lastErrorData ?? diagnostic("rconNotConnected"), "not_connected"));
       return;
     }
     const at = Date.now();
     let listResp: RconResponse;
     try {
-      listResp = await this.send("list", "list uuids");
+      listResp = await this.readList();
     } catch (e) {
       this.handleRconError(e);
       return;
@@ -210,16 +216,18 @@ export class Poller extends EventEmitter {
     const list = parseList(listResp.body, this.diag.warn);
     if (!list) {
       // Ohne lesbare Liste keine Online-Zeiten → als Lücke behandeln
-      this.lastError = "Antwort auf /list nicht lesbar (siehe Debug-Seite)";
+      this.lastErrorData = diagnostic("listUnreadable");
+      this.lastError = formatDiagnostic("en", this.lastErrorData);
       this.tracker.interrupt("rcon_error", at);
       this.emitStatus();
       return;
     }
     this.lastError = null;
+    this.lastErrorData = null;
     this.onlineCount = list.online;
     this.maxPlayers = list.max;
     let listed = list.players;
-    if (list.truncated) {
+    if (list.truncated || list.players.some((player) => !player.uuid)) {
       try {
         listed = await this.completeList(listed);
       } catch (e) {
@@ -287,6 +295,18 @@ export class Poller extends EventEmitter {
     this.lastUpdate = Date.now();
     this.emitStatus();
     this.emitPlayers();
+  }
+
+  private async readList(): Promise<RconResponse> {
+    if (this.listCommandIndex >= LIST_COMMANDS.length) throw new DiagnosticError("listUnavailable");
+    for (;;) {
+      const command = LIST_COMMANDS[this.listCommandIndex]!;
+      const response = await this.send("list", command);
+      if (!UNKNOWN_COMMAND.test(stripLegacy(response.body).trim())) return response;
+      this.listCommandIndex++;
+      if (this.listCommandIndex >= LIST_COMMANDS.length) return response;
+      if (this.listCommandIndex === 2) this.diag.warn("warn", "list-legacy-fallback", diagnostic("listLegacyFallback"), response.body);
+    }
   }
 
   /**
@@ -388,11 +408,12 @@ export class Poller extends EventEmitter {
 
   connectionState(): ConnectionState {
     if (this.paused) return "paused";
+    if (waitingForRcon(this.rcon)) return "connecting";
     switch (this.rcon.state) {
       case "connected":
         return this.lastError ? "error" : "connected";
       case "connecting":
-        return this.lastUpdate === null && !this.rcon.lastError ? "connecting" : "error";
+        return "error";
       case "auth_failed":
         return "auth_failed";
       default:
@@ -404,7 +425,10 @@ export class Poller extends EventEmitter {
     const conn = this.connectionState();
     return {
       connection: conn,
-      message: conn === "error" || conn === "auth_failed" ? (this.lastError ?? this.rcon.lastError ?? "Keine Verbindung") : null,
+      message: conn === "connecting" ? formatDiagnostic("en", diagnostic("rconWaiting"))
+        : conn === "error" || conn === "auth_failed" ? (this.lastError ?? this.rcon.lastError ?? "No RCON connection") : null,
+      messageData: conn === "connecting" ? diagnostic("rconWaiting")
+        : conn === "error" || conn === "auth_failed" ? (this.lastErrorData ?? this.rcon.lastErrorData ?? diagnostic("rconNotConnected")) : undefined,
       paused: this.paused,
       pausedSince: this.pausedSince,
       lastUpdate: this.lastUpdate,

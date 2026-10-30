@@ -1,3 +1,4 @@
+import { DiagnosticError } from "../shared/diagnostic-messages.js";
 // Named dashboard users, scrypt passwords, revocable sessions, and login rate limits.
 import { createHash, randomBytes, timingSafeEqual, scryptSync } from "node:crypto";
 import { USERNAME_RE, type DashboardUser } from "../shared/users.js";
@@ -42,20 +43,20 @@ export class Auth {
   listUsers(): DashboardUser[] { return this.repo.listUsers().map(publicUser); }
 
   createUser(input: { username?: unknown; password?: unknown; role?: unknown }): DashboardUser {
-    if (typeof input.username !== "string" || !USERNAME_RE.test(input.username) || input.username.toLowerCase() === "admin") throw new Error("Ungültiger Benutzername");
-    if (input.role !== "viewer" && input.role !== "operator") throw new Error("Ungültige Rolle");
+    if (typeof input.username !== "string" || !USERNAME_RE.test(input.username) || input.username.toLowerCase() === "admin") throw new DiagnosticError("authUsername");
+    if (input.role !== "viewer" && input.role !== "operator") throw new DiagnosticError("authRole");
     validatePassword(input.password);
-    if (this.repo.userByName(input.username)) throw new Error("Benutzername bereits vergeben");
+    if (this.repo.userByName(input.username)) throw new DiagnosticError("authDuplicate");
     return publicUser(this.repo.addUser(input.username, passwordHash(input.password as string), input.role));
   }
 
   updateUser(id: number, input: { role?: unknown; enabled?: unknown; password?: unknown }, actor: DashboardUser): DashboardUser {
     const user = this.repo.userById(id);
-    if (!user) throw new Error("Benutzer unbekannt");
-    if (user.bootstrap) throw new Error("Das Administratorkonto wird über DASHBOARD_PASSWORD verwaltet");
-    if (input.role !== "viewer" && input.role !== "operator") throw new Error("Ungültige Rolle");
-    if (typeof input.enabled !== "boolean") throw new Error("enabled (boolean) erwartet");
-    if (id === actor.id && (!input.enabled || input.role !== "operator")) throw new Error("Das eigene Konto kann nicht deaktiviert oder herabgestuft werden");
+    if (!user) throw new DiagnosticError("apiUserMissing");
+    if (user.bootstrap) throw new DiagnosticError("authBootstrap");
+    if (input.role !== "viewer" && input.role !== "operator") throw new DiagnosticError("authRole");
+    if (typeof input.enabled !== "boolean") throw new DiagnosticError("authEnabled");
+    if (id === actor.id && (!input.enabled || input.role !== "operator")) throw new DiagnosticError("authSelf");
     let hash: string | undefined;
     if (input.password !== undefined) { validatePassword(input.password); hash = passwordHash(input.password as string); }
     this.repo.updateUser(id, input.role, input.enabled, hash);
@@ -109,7 +110,7 @@ function publicUser(row: UserRow): DashboardUser {
   return { id: row.id, username: row.username, role: row.role, enabled: !!row.enabled, bootstrap: !!row.bootstrap };
 }
 function validatePassword(input: unknown): void {
-  if (typeof input !== "string" || input.length < 8 || Buffer.byteLength(input) > 1024) throw new Error("Passwort muss 8 bis 1024 Bytes lang sein");
+  if (typeof input !== "string" || input.length < 8 || Buffer.byteLength(input) > 1024) throw new DiagnosticError("authPassword");
 }
 function passwordHash(password: string): string {
   const salt = randomBytes(16).toString("hex");

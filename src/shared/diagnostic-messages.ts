@@ -1,5 +1,84 @@
 import type { Locale } from "./translations.js";
 export const DIAGNOSTIC_MESSAGES = {
+  "listUnavailable": ["Kein unterstützter Spielerlisten-Befehl. Serverberechtigungen prüfen und Dashboard neu starten.", "No supported player-list command. Check server permissions and restart the dashboard."],
+  "rconRefused": ["Verbindung abgelehnt. Wartet auf Minecraft RCON; Aktivierung und Port prüfen.", "Connection refused. Waiting for Minecraft RCON; check that RCON is enabled and the port is correct."],
+  "rconHostNotFound": ["RCON-Host nicht gefunden", "RCON host not found"],
+  "rconConnectTimeout": ["Zeitüberschreitung beim Verbinden mit RCON", "Timed out connecting to RCON"],
+  "rconReset": ["RCON-Verbindung vom Server getrennt", "RCON connection reset by the server"],
+  "rconUnreachable": ["RCON-Host nicht erreichbar", "RCON host is unreachable"],
+  "rconSocket": ["RCON-Verbindungsfehler ({code})", "RCON connection error ({code})"],
+  "rconClosed": ["RCON-Verbindung geschlossen", "RCON connection closed"],
+  "rconAuth": ["RCON-Authentifizierung fehlgeschlagen; Zugangsdaten prüfen", "RCON authentication failed; check credentials"],
+  "rconNotAuthenticated": ["RCON-Server meldet: nicht authentifiziert", "RCON server reports: not authenticated"],
+  "rconProtocol": ["RCON-Protokollfehler: {error}", "RCON protocol error: {error}"],
+  "rconPacketLength": ["Ungültige RCON-Paketlänge {length}", "Invalid RCON packet length {length}"],
+  "rconCommandTimeout": ["Zeitüberschreitung bei RCON-Befehl ({milliseconds} ms)", "RCON command timed out ({milliseconds} ms)"],
+  "rconStopped": ["RCON-Client wurde beendet", "RCON client stopped"],
+  "rconNotConnected": ["Keine RCON-Verbindung", "No RCON connection"],
+  "rconTooLong": ["Befehl zu lang (max. {bytes} Bytes)", "Command too long (maximum {bytes} bytes)"],
+  "rconWaiting": ["Wartet auf Minecraft RCON", "Waiting for Minecraft RCON"],
+  "rconFailure": ["RCON-Anfrage fehlgeschlagen", "RCON request failed"],
+  "commandFailure": ["Fehler: {error}", "Error: {error}"],
+  "configNumber": ["{field} muss eine Zahl sein", "{field} must be a number"],
+  "configRequired": ["{field} ist nicht gesetzt", "{field} is not set"],
+  "configPassword": ["DASHBOARD_PASSWORD muss mindestens 8 Zeichen lang sein", "DASHBOARD_PASSWORD must be at least 8 characters long"],
+  "apiJson": ["JSON erwartet", "JSON required"],
+  "apiOrigin": ["Fremde Herkunft", "Cross-origin request denied"],
+  "apiLogin": ["Nicht angemeldet", "Not logged in"],
+  "apiOperator": ["Operator-Rechte erforderlich", "Operator permission required"],
+  "apiPassword": ["Falsches Passwort", "Incorrect password"],
+  "apiRateLimit": ["Zu viele Fehlversuche. Bitte in {minutes} Minute(n) erneut versuchen.", "Too many failed attempts. Please try again in {minutes} minute(s)."],
+  "apiBackupMissing": ["Backup nicht gefunden", "Backup not found"],
+  "apiBackupName": ["Ungültiger Backup-Name", "Invalid backup name"],
+  "apiUserMissing": ["Benutzer unbekannt", "Unknown user"],
+  "apiUuid": ["Ungültige UUID", "Invalid UUID"],
+  "apiPlayerMissing": ["Spieler unbekannt", "Unknown player"],
+  "apiPaused": ["paused (boolean) erwartet", "paused must be a boolean"],
+  "apiCommand": ["command erwartet", "command is required"],
+  "apiNotFound": ["Nicht gefunden", "Not found"],
+  "apiRenderMissing": ["Render-Asset nicht gefunden", "Render asset not found"],
+  "apiSkinMissing": ["Skin nicht installiert", "Skin not installed"],
+  "apiGuiMissing": ["Kein GUI-Sprite", "No GUI sprite"],
+  "apiTextureMissing": ["Keine Textur", "No texture"],
+  "apiInvalid": ["Ungültige Anfrage", "Invalid request"],
+  "apiInternal": ["Interner Serverfehler", "Internal server error"],
+  "blueMapUrlRequired": ["url erwartet", "url is required"],
+  "blueMapInvalidUrl": ["Eine vollständige HTTP(S)-URL ohne Benutzername oder Passwort ist erforderlich.", "A complete HTTP(S) URL without a username or password is required."],
+  "blueMapHttps": ["Bitte für BlueMap HTTPS verwenden.", "Please use HTTPS for BlueMap."],
+  "blueMapMissing": ["BlueMap ist nicht eingerichtet", "BlueMap is not configured"],
+  "blueMapAccess": ["Ungültige BlueMap-Zugriffsregel", "Invalid BlueMap access policy"],
+  "blueMapOperator": ["Diese BlueMap-URL erfordert eine aktive Dashboard-Anmeldung als Operator. Bitte mit einem Operator-Konto anmelden; ein Minecraft-Spielercode ist nicht erforderlich.", "This BlueMap URL requires an active dashboard login as an operator. Sign in with an operator account; no Minecraft player code is required."],
+  "consoleEmpty": ["Leerer Befehl", "Empty command"],
+  "consoleNewline": ["Befehl darf keine Zeilenumbrüche enthalten", "Command must not contain line breaks"],
+  "authUsername": ["Ungültiger Benutzername", "Invalid username"],
+  "authRole": ["Ungültige Rolle", "Invalid role"],
+  "authDuplicate": ["Benutzername bereits vergeben", "Username already exists"],
+  "authBootstrap": ["Das Administratorkonto wird über DASHBOARD_PASSWORD verwaltet", "The admin account is managed through DASHBOARD_PASSWORD"],
+  "authEnabled": ["enabled (boolean) erwartet", "enabled must be a boolean"],
+  "authSelf": ["Das eigene Konto kann nicht deaktiviert oder herabgestuft werden", "You cannot disable or demote your own account"],
+  "authPassword": ["Passwort muss 8 bis 1024 Bytes lang sein", "Password must be 8 to 1024 bytes long"],
+  "actionUuid": ["{field}: ungültige UUID", "{field}: invalid UUID"],
+  "actionCoordinate": ["{field}: ungültige Koordinate", "{field}: invalid coordinate"],
+  "actionDimension": ["Ungültige Dimension", "Invalid dimension"],
+  "actionRequired": ["{field} fehlt", "{field} is required"],
+  "actionText": ["{field}: Text erwartet", "{field}: text required"],
+  "actionTextLength": ["{field}: höchstens {max} Zeichen", "{field}: maximum {max} characters"],
+  "actionExpected": ["Aktion erwartet", "Action required"],
+  "actionPlayerName": ["Name des Spielers unbekannt", "Player name is unknown"],
+  "actionMode": ["Ungültiger Spielmodus", "Invalid game mode"],
+  "actionSameTarget": ["Spieler und Ziel sind gleich", "Player and target are the same"],
+  "actionItem": ["Ungültige Item-ID", "Invalid item ID"],
+  "actionCount": ["Anzahl muss zwischen 1 und 6400 liegen", "Count must be between 1 and 6400"],
+  "actionName": ["Ungültiger Name", "Invalid name"],
+  "actionIp": ["Ungültige IP-Adresse", "Invalid IP address"],
+  "actionTime": ["Ungültige Uhrzeit", "Invalid time"],
+  "actionWeather": ["Ungültiges Wetter", "Invalid weather"],
+  "actionDifficulty": ["Ungültige Schwierigkeit", "Invalid difficulty"],
+  "actionRule": ["Unbekannte Gamerule", "Unknown game rule"],
+  "actionRuleValue": ["Wert muss an/aus oder eine ganze Zahl sein", "Value must be on/off or an integer"],
+  "actionUnknown": ["Unbekannte Aktion", "Unknown action"],
+  "listLegacyFallback": ["Namespaced-Spielerliste nicht unterstützt; verwende /list uuids bis zum Dashboard-Neustart", "Namespaced player list is unsupported; using /list uuids until the dashboard restarts"],
+
   "snapshotCorrupt": [
     "Gespeicherter Datenstand ist beschädigt",
     "Stored player snapshot is corrupt"
@@ -174,4 +253,14 @@ export function formatDiagnostic(locale: Locale, message: DiagnosticMessage): st
   for (const [key, child] of Object.entries(message.children ?? {})) params[key] = formatDiagnostic(locale, child);
   const template = DIAGNOSTIC_MESSAGES[message.id]?.[locale === "de" ? 0 : 1] ?? message.id;
   return template.replace(/\{(\w+)\}/g, (match, key: string) => Object.hasOwn(params, key) ? String(params[key]) : match);
+}
+
+/** Owned backend errors carry stable identifiers; Error.message stays English for logs. */
+export class DiagnosticError extends Error {
+  readonly messageData: DiagnosticMessage;
+  constructor(id: DiagnosticMessage["id"], params?: DiagnosticMessage["params"], children?: DiagnosticMessage["children"]) {
+    const data = diagnostic(id, params, children);
+    super(formatDiagnostic("en", data));
+    this.messageData = data;
+  }
 }

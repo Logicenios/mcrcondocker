@@ -110,11 +110,12 @@ describe("API", () => {
     expect((await settings({ url: "javascript:alert(1)" })).statusCode).toBe(400);
     expect((await settings({ url: "https://user:password@map.example.com/" })).statusCode).toBe(400);
     expect((await settings({})).statusCode).toBe(400);
+    for (const payload of [[], ["url", "https://map.example.com/"], { url: 42 }]) expect((await settings(payload)).statusCode).toBe(400);
     expect((await settings({ url: "https://map.example.com/" }, { ...json, cookie, origin: "https://evil.example.com" } as typeof json & { cookie: string })).statusCode).toBe(403);
     const url = "https://map.example.com:8100/maps/?a=1&b=%22#world:0:0:0";
-    expect((await settings({ url })).json()).toEqual({ url });
+    expect((await settings({ url })).json()).toEqual({ url, access: "all" });
     expect(repo.getSetting("bluemap.url")).toBe(url);
-    expect((await app.inject({ url: "/api/settings/bluemap", headers: { cookie } })).json()).toEqual({ url });
+    expect((await app.inject({ url: "/api/settings/bluemap", headers: { cookie } })).json()).toEqual({ url, access: "all" });
     const frame = await app.inject({ url: "/api/bluemap/view?v=1", headers: { cookie } });
     expect(frame.statusCode).toBe(200);
     expect(frame.headers["content-type"]).toContain("text/html");
@@ -127,9 +128,75 @@ describe("API", () => {
     expect(dashboard.headers["content-security-policy"]).toContain("frame-src 'self';");
     expect(dashboard.headers["content-security-policy"]).toContain("frame-ancestors 'none'");
     expect(dashboard.headers["x-frame-options"]).toBe("DENY");
-    expect((await settings({ url: null })).json()).toEqual({ url: null });
+    expect((await settings({ url: null })).json()).toEqual({ url: null, access: "all" });
     expect(repo.getSetting("bluemap.url")).toBeNull();
     expect((await app.inject({ url: "/api/bluemap/view", headers: { cookie } })).statusCode).toBe(404);
+  });
+
+  it("returns stable localized API errors including validation and CSRF failures", async () => {
+    for (const [locale, loginText, uuidText] of [["en", "Not logged in", "Invalid UUID"], ["de", "Nicht angemeldet", "Ungültige UUID"]]) {
+      const language = { "accept-language": locale };
+      const denied = await app.inject({ url: "/api/settings/bluemap", headers: language });
+      expect(denied.json()).toMatchObject({ error: loginText, code: "apiLogin", errorData: { id: "apiLogin" } });
+      const invalid = await app.inject({ url: "/api/players/invalid", headers: { cookie, ...language } });
+      expect(invalid.json()).toMatchObject({ error: uuidText, code: "apiUuid" });
+      const action = await app.inject({ method: "POST", url: "/api/action", headers: { ...json, cookie, ...language }, payload: { action: { type: "give", uuid: "invalid", item: "minecraft:stone" } } });
+      expect(action.statusCode).toBe(400);
+      expect(action.json()).toMatchObject({ code: "actionUuid", errorData: { params: { field: "uuid" } } });
+      expect(action.json().error).toContain(locale === "en" ? "invalid UUID" : "ungültige UUID");
+      const origin = await app.inject({ method: "POST", url: "/api/settings/bluemap", headers: { ...json, cookie, ...language, origin: "https://evil.example.com" }, payload: { url: null } });
+      expect(origin.statusCode).toBe(403);
+      expect(origin.json()).toMatchObject({ code: "apiOrigin", error: locale === "en" ? "Cross-origin request denied" : "Fremde Herkunft" });
+      const invalidUrl = await app.inject({ method: "POST", url: "/api/settings/bluemap", headers: { ...json, cookie, ...language }, payload: { url: "javascript:alert(1)" } });
+      expect(invalidUrl.json()).toMatchObject({ code: "blueMapInvalidUrl" });
+      expect(invalidUrl.json().error).toMatch(locale === "en" ? /^A complete HTTP/ : /^Eine vollständige HTTP/);
+      const malformed = await app.inject({ method: "POST", url: "/api/pause", headers: { ...json, cookie, ...language }, payload: "{" });
+      expect(malformed.json()).toMatchObject({ code: "apiInvalid", error: locale === "en" ? "Invalid request" : "Ungültige Anfrage" });
+    }
+    expect((await app.inject({ url: "/api/status" })).json().error).toBe("Not logged in");
+  });
+
+  it("uses the real host-only operator session for a protected same-origin BlueMap and rejects revoked sessions", async () => {
+    const host = "dashboard.example.com:2053";
+    // This app uses HTTP internally; Caddy preserves Host and forwards HTTPS in production.
+    const url = `http://${host}/map/`;
+    const headers = { ...json, cookie, host };
+    const saved = await app.inject({ method: "POST", url: "/api/settings/bluemap", headers, payload: { url, access: "all" } });
+    expect(saved.json()).toEqual({ url, access: "operator" });
+    expect((await app.inject({ method: "POST", url: "/api/settings/bluemap", headers, payload: { url, access: "invalid" } })).statusCode).toBe(400);
+    const session = await app.inject({ url: "/api/session", headers });
+    expect(session.json()).toMatchObject({ authenticated: true, user: { enabled: true, role: "operator", username: "admin" } });
+    const frame = await app.inject({ url: "/api/bluemap/view", headers });
+    expect(frame.statusCode).toBe(200);
+    expect(frame.body).toContain(`src="${url}"`);
+    expect(frame.body).not.toContain("token=");
+    expect(frame.headers["content-security-policy"]).toContain(`frame-src http://${host};`);
+    expect(frame.headers["cache-control"]).toBe("no-store");
+    const user = await app.inject({ method: "POST", url: "/api/users", headers, payload: { username: "map-viewer", password: "map-viewer-password", role: "viewer" } });
+    const login = await app.inject({ method: "POST", url: "/api/login", headers: { ...json, host }, payload: { username: "map-viewer", password: "map-viewer-password" } });
+    expect(login.headers["set-cookie"]).not.toMatch(/Domain=/i);
+    const viewer = { cookie: String(login.headers["set-cookie"]).split(";")[0]!, host };
+    expect((await app.inject({ url: "/api/settings/bluemap", headers: viewer })).json()).toEqual({ url, access: "operator" });
+    for (const locale of ["en", "de"]) {
+      const denied = await app.inject({ url: "/api/bluemap/view", headers: { ...viewer, "accept-language": locale } });
+      expect(denied.statusCode).toBe(403);
+      expect(denied.json()).toMatchObject({ code: "blueMapOperator" });
+      expect(denied.json().error).toContain(locale === "en" ? "no Minecraft player code" : "Minecraft-Spielercode");
+    }
+    // External maps can still be allowed for viewers; their own authentication remains separate.
+    const external = "https://map.example.com/";
+    await app.inject({ method: "POST", url: "/api/settings/bluemap", headers, payload: { url: external, access: "all" } });
+    expect((await app.inject({ url: "/api/bluemap/view", headers: viewer })).statusCode).toBe(200);
+    await app.inject({ method: "POST", url: "/api/settings/bluemap", headers, payload: { url: external, access: "operator" } });
+    expect((await app.inject({ url: "/api/bluemap/view", headers: viewer })).statusCode).toBe(403);
+    await app.inject({ method: "PATCH", url: `/api/users/${user.json().id}`, headers, payload: { role: "viewer", enabled: false } });
+    expect((await app.inject({ url: "/api/bluemap/view", headers: viewer })).statusCode).toBe(401);
+    expect((await app.inject({ url: "/api/session", headers: viewer })).json()).toMatchObject({ authenticated: false, user: null });
+    const adminLogin = await app.inject({ method: "POST", url: "/api/login", headers: { ...json, host }, payload: { password: DASH_PW } });
+    const revoked = { ...json, host, cookie: String(adminLogin.headers["set-cookie"]).split(";")[0]! };
+    await app.inject({ method: "POST", url: "/api/logout", headers: revoked, payload: {} });
+    expect((await app.inject({ url: "/api/bluemap/view", headers: revoked })).statusCode).toBe(401);
+    await app.inject({ method: "POST", url: "/api/settings/bluemap", headers, payload: { url: null } });
   });
 
   it("serves language and GUI routes only to authenticated sessions", async () => {
@@ -312,7 +379,7 @@ describe("Aktionen, Welt, Bann-Liste, Protokoll", () => {
   it("Spielmodus setzen", async () => {
     const r = await act({ type: "gamemode", uuid: alex, mode: "creative" });
     expect(r.statusCode).toBe(200);
-    expect(r.json()).toMatchObject({ ok: true, label: "Spielmodus von Alex → Kreativ", commands: [`execute as ${alex} run gamemode creative @s`] });
+    expect(r.json()).toMatchObject({ ok: true, label: "Game mode of Alex → Creative", commands: [`execute as ${alex} run gamemode creative @s`] });
     expect(mock().gameMode).toBe(1);
     await act({ type: "gamemode", uuid: alex, mode: "survival" });
   });
@@ -417,8 +484,8 @@ describe("Aktionen, Welt, Bann-Liste, Protokoll", () => {
     await app.inject({ method: "POST", url: "/api/console", headers: { ...json, cookie }, payload: { command: "seed" } });
     const log = (await app.inject({ url: "/api/audit?limit=50", headers: { cookie } })).json();
     expect(log[0]).toMatchObject({ source: "console", command: "seed", ok: true });
-    expect(log.some((e: { label: string }) => e.label === "Alex gebannt (Test)")).toBe(true);
-    expect(log.some((e: { ok: boolean; label: string }) => !e.ok && e.label === "Alex entbannt")).toBe(true);
+    expect(log.some((e: { label: string }) => e.label === "Banned Alex (Test)")).toBe(true);
+    expect(log.some((e: { ok: boolean; label: string }) => !e.ok && e.label === "Unbanned Alex")).toBe(true);
   });
 
   it("Todespunkt aus den Spielerdaten", async () => {
@@ -482,7 +549,7 @@ describe("Viele Spieler (/list wird vom Server gekürzt)", () => {
     await client.waitForConnected();
     await p.cycle();
     expect(world.players.length).toBeGreaterThan(5);
-    expect(d.getRaw().list?.find((x) => x.command === "list uuids")?.body).toMatch(/\.\.\.$/);
+    expect(d.getRaw().list?.find((x) => x.command === "minecraft:list uuids")?.body).toMatch(/\.\.\.$/);
     expect(p.status().online).toBe(world.players.length);
     expect(p.summaries().filter((x) => x.online).map((x) => x.name).sort()).toEqual(world.players.map((x) => x.name).sort());
     expect(d.getWarnings().filter((w) => w.key.startsWith("list-"))).toEqual([]);

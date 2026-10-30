@@ -1,6 +1,6 @@
 import net from "node:net";
 import { afterEach, describe, expect, it } from "vitest";
-import { RconClient } from "../../src/server/rcon/client.js";
+import { RconClient, waitingForRcon, rconLogMessage } from "../../src/server/rcon/client.js";
 import { startMockRconServer, type MockRconServer } from "../../src/server/rcon/mock-server.js";
 import { encodePacket, PacketDecoder } from "../../src/server/rcon/protocol.js";
 import { fixture263 } from "./helpers.js";
@@ -75,7 +75,10 @@ describe("RconClient", () => {
     client.start();
     await new Promise((r) => setTimeout(r, 200));
     expect(states).toContain("auth_failed");
-    expect(client.lastError).toBe("RCON-Passwort falsch");
+    expect(client.lastError).toBe("RCON authentication failed; check credentials");
+    expect(client.lastErrorData).toEqual({ id: "rconAuth" });
+    expect(waitingForRcon(client)).toBe(false);
+    expect(rconLogMessage(client)).toContain("RCON: auth_failed");
   });
 
   it("verbindet nach Abbruch automatisch neu", async () => {

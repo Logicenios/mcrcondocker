@@ -1,3 +1,4 @@
+import { diagnostic, DiagnosticError, formatDiagnostic, type DiagnosticMessage } from "../shared/diagnostic-messages.js";
 // Aktionen aus dem Dashboard (Spielmodus, Teleport, Items, Welt, Nachrichten …).
 // Jede Aktion wird hier geprüft und in feste RCON-Befehle übersetzt – das Frontend
 // schickt nie eigene Befehlstexte. Alles landet im Aktionsprotokoll.
@@ -32,7 +33,7 @@ const TIME_PRESETS: Record<TimePreset, { ticks: number; label: string }> = {
 const WEATHER_LABELS: Record<WeatherKind, string> = { clear: "Klar", rain: "Regen", thunder: "Gewitter" };
 const DIFFICULTY_LABELS: Record<Difficulty, string> = { peaceful: "Friedlich", easy: "Leicht", normal: "Normal", hard: "Schwer" };
 
-export class ActionError extends Error {}
+export class ActionError extends DiagnosticError {}
 
 interface BuiltAction {
   label: string;
@@ -51,30 +52,30 @@ export type ActionOutcome =
   | { kind: "needs_confirmation"; reason: string; label: string };
 
 function uuidOf(v: unknown, field = "uuid"): string {
-  if (typeof v !== "string" || !UUID_RE.test(v.toLowerCase())) throw new ActionError(`${field}: ungültige UUID`);
+  if (typeof v !== "string" || !UUID_RE.test(v.toLowerCase())) throw new ActionError("actionUuid", { field });
   return v.toLowerCase();
 }
 
 function coordOf(v: unknown, field: string): number {
-  if (typeof v !== "number" || !Number.isFinite(v) || Math.abs(v) > MAX_COORD) throw new ActionError(`${field}: ungültige Koordinate`);
+  if (typeof v !== "number" || !Number.isFinite(v) || Math.abs(v) > MAX_COORD) throw new ActionError("actionCoordinate", { field });
   return Math.round(v * 100) / 100;
 }
 
 function dimOf(v: unknown): string {
-  if (typeof v !== "string" || !DIM_RE.test(v)) throw new ActionError("Ungültige Dimension");
+  if (typeof v !== "string" || !DIM_RE.test(v)) throw new ActionError("actionDimension");
   return v;
 }
 
 /** einzeiliger Freitext (Grund, Nachricht) */
 function textOf(v: unknown, field: string, required: boolean): string {
   if (v === undefined || v === null || v === "") {
-    if (required) throw new ActionError(`${field} fehlt`);
+    if (required) throw new ActionError("actionRequired", { field });
     return "";
   }
-  if (typeof v !== "string") throw new ActionError(`${field}: Text erwartet`);
+  if (typeof v !== "string") throw new ActionError("actionText", { field });
   const t = v.replace(/[\r\n\t]+/g, " ").trim();
-  if (required && !t) throw new ActionError(`${field} fehlt`);
-  if (t.length > MAX_TEXT) throw new ActionError(`${field}: höchstens ${MAX_TEXT} Zeichen`);
+  if (required && !t) throw new ActionError("actionRequired", { field });
+  if (t.length > MAX_TEXT) throw new ActionError("actionTextLength", { field, max: MAX_TEXT });
   return t;
 }
 
@@ -94,20 +95,20 @@ function quoted(text: string): string {
 
 /** Übersetzt eine Aktion in Befehle. Wirft ActionError bei ungültigen Eingaben. */
 export function buildAction(raw: unknown, ctx: ActionContext, locale: Locale = "de"): BuiltAction {
-  if (!raw || typeof raw !== "object") throw new ActionError("Aktion erwartet");
+  if (!raw || typeof raw !== "object") throw new ActionError("actionExpected");
   const t = (key: string, params: Record<string, string | number> = {}) => translate(locale, key, params);
   const a = raw as ActionRequest & Record<string, unknown>;
   const who = (uuid: string) => ctx.nameOf(uuid) ?? uuid;
   const nameFor = (uuid: string) => {
     const n = ctx.nameOf(uuid);
-    if (!n || !NAME_RE.test(n)) throw new ActionError("Name des Spielers unbekannt");
+    if (!n || !NAME_RE.test(n)) throw new ActionError("actionPlayerName");
     return n;
   };
 
   switch (a.type) {
     case "gamemode": {
       const uuid = uuidOf(a.uuid);
-      if (!(a.mode in GAME_MODE_LABELS)) throw new ActionError("Ungültiger Spielmodus");
+      if (!(a.mode in GAME_MODE_LABELS)) throw new ActionError("actionMode");
       return { label: t("Spielmodus von {player} → {mode}", { player: who(uuid), mode: t(GAME_MODE_LABELS[a.mode]!) }), commands: [asPlayer(uuid, `gamemode ${a.mode} @s`)], confirm: null };
     }
     case "heal": {
@@ -122,7 +123,7 @@ export function buildAction(raw: unknown, ctx: ActionContext, locale: Locale = "
     case "tp_player": {
       const uuid = uuidOf(a.uuid);
       const target = uuidOf(a.target, "target");
-      if (uuid === target) throw new ActionError("Spieler und Ziel sind gleich");
+      if (uuid === target) throw new ActionError("actionSameTarget");
       return { label: t("{player} → {target} teleportiert", { player: who(uuid), target: who(target) }), commands: [`tp ${uuid} ${target}`], confirm: null };
     }
     case "tp_coords": {
@@ -149,9 +150,9 @@ export function buildAction(raw: unknown, ctx: ActionContext, locale: Locale = "
     }
     case "give": {
       const uuid = uuidOf(a.uuid);
-      if (typeof a.item !== "string" || !ITEM_RE.test(a.item) || a.item.includes("..")) throw new ActionError("Ungültige Item-ID");
+      if (typeof a.item !== "string" || !ITEM_RE.test(a.item) || a.item.includes("..")) throw new ActionError("actionItem");
       const count = a.count;
-      if (typeof count !== "number" || !Number.isInteger(count) || count < 1 || count > 6400) throw new ActionError("Anzahl muss zwischen 1 und 6400 liegen");
+      if (typeof count !== "number" || !Number.isInteger(count) || count < 1 || count > 6400) throw new ActionError("actionCount");
       const item = a.item.includes(":") ? a.item : `minecraft:${a.item}`;
       return { label: t("{player} erhält {count}× {item}", { player: who(uuid), count, item: item.replace("minecraft:", "") }), commands: [asPlayer(uuid, `give @s ${item} ${count}`)], confirm: null };
     }
@@ -161,13 +162,13 @@ export function buildAction(raw: unknown, ctx: ActionContext, locale: Locale = "
     }
     case "kick": {
       const uuid = uuidOf(a.uuid);
-      const reason = textOf(a.reason, "Grund", false);
+      const reason = textOf(a.reason, "reason", false);
       return { label: t("{player} gekickt{reason}", { player: who(uuid), reason: reason ? ` (${reason})` : "" }), commands: [asPlayer(uuid, `kick @s${reason ? " " + reason : ""}`)], confirm: t("{player} wird vom Server geworfen.", { player: who(uuid) }) };
     }
     case "ban": {
       const uuid = uuidOf(a.uuid);
       const name = nameFor(uuid);
-      const reason = textOf(a.reason, "Grund", false);
+      const reason = textOf(a.reason, "reason", false);
       return { label: t("{player} gebannt{reason}", { player: name, reason: reason ? ` (${reason})` : "" }), commands: [`ban ${name}${reason ? " " + reason : ""}`], confirm: t("{player} wird gebannt und kann den Server nicht mehr betreten.", { player: name }) };
     }
     case "op": {
@@ -179,45 +180,45 @@ export function buildAction(raw: unknown, ctx: ActionContext, locale: Locale = "
       return { label: t("{player} ist kein Operator mehr", { player: name }), commands: [`deop ${name}`], confirm: t("{player} verliert die Operator-Rechte.", { player: name }) };
     }
     case "pardon": {
-      if (typeof a.name !== "string" || !NAME_RE.test(a.name)) throw new ActionError("Ungültiger Name");
+      if (typeof a.name !== "string" || !NAME_RE.test(a.name)) throw new ActionError("actionName");
       return { label: t("{player} entbannt", { player: a.name }), commands: [`pardon ${a.name}`], confirm: null };
     }
     case "pardon_ip": {
-      if (typeof a.ip !== "string" || !IP_RE.test(a.ip)) throw new ActionError("Ungültige IP-Adresse");
+      if (typeof a.ip !== "string" || !IP_RE.test(a.ip)) throw new ActionError("actionIp");
       return { label: t("IP {ip} entbannt", { ip: a.ip }), commands: [`pardon-ip ${a.ip}`], confirm: null };
     }
     case "time": {
       const p = TIME_PRESETS[a.preset as TimePreset];
-      if (!p) throw new ActionError("Ungültige Uhrzeit");
+      if (!p) throw new ActionError("actionTime");
       return { label: t("Uhrzeit → {time}", { time: t(p.label) }), commands: [`time set ${p.ticks}`], confirm: null };
     }
     case "weather": {
       const l = WEATHER_LABELS[a.weather as WeatherKind];
-      if (!l) throw new ActionError("Ungültiges Wetter");
+      if (!l) throw new ActionError("actionWeather");
       return { label: t("Wetter → {weather}", { weather: t(l) }), commands: [`weather ${a.weather}`], confirm: null };
     }
     case "difficulty": {
       const l = DIFFICULTY_LABELS[a.difficulty as Difficulty];
-      if (!l) throw new ActionError("Ungültige Schwierigkeit");
+      if (!l) throw new ActionError("actionDifficulty");
       return { label: t("Schwierigkeit → {difficulty}", { difficulty: t(l) }), commands: [`difficulty ${a.difficulty}`], confirm: t("Die Schwierigkeit wird für alle Spieler auf „{difficulty}“ gesetzt.", { difficulty: t(l) }) };
     }
     case "gamerule": {
       const def = GAMERULES.find((g) => g.names.includes(a.rule as string));
-      if (!def) throw new ActionError("Unbekannte Gamerule");
+      if (!def) throw new ActionError("actionRule");
       const v = a.value;
       if (typeof v !== "boolean" && (typeof v !== "number" || !Number.isInteger(v) || v < -1_000_000 || v > 1_000_000)) {
-        throw new ActionError("Wert muss an/aus oder eine ganze Zahl sein");
+        throw new ActionError("actionRuleValue");
       }
       const shown = typeof v === "boolean" ? (v ? "an" : "aus") : String(v);
       return { label: t("Gamerule {rule} → {value}", { rule: t(def.label), value: t(shown) }), commands: [`gamerule ${a.rule} ${v}`], confirm: t("„{rule}“ wird für die ganze Welt auf {value} gesetzt.", { rule: t(def.label), value: t(shown) }) };
     }
     case "say": {
-      const text = textOf(a.text, "Nachricht", true);
+      const text = textOf(a.text, "text", true);
       return { label: t("Nachricht an alle: {text}", { text }), commands: [`say ${text}`], confirm: null };
     }
     case "title": {
-      const text = textOf(a.text, "Titel", true);
-      const sub = textOf(a.subtitle, "Untertitel", false);
+      const text = textOf(a.text, "text", true);
+      const sub = textOf(a.subtitle, "subtitle", false);
       const cmds = [`title @a times 10 70 20`];
       // Untertitel muss vor dem Titel gesetzt werden, angezeigt wird erst mit "title"
       if (sub) cmds.push(`title @a subtitle ${quoted(sub)}`);
@@ -227,11 +228,11 @@ export function buildAction(raw: unknown, ctx: ActionContext, locale: Locale = "
     case "msg": {
       // msg per Name: über "execute as" wäre der Spieler selbst der Absender
       const name = nameFor(uuidOf(a.uuid));
-      const text = textOf(a.text, "Nachricht", true);
+      const text = textOf(a.text, "text", true);
       return { label: t("Nachricht an {player}: {text}", { player: name, text }), commands: [`msg ${name} ${text}`], confirm: null };
     }
     default:
-      throw new ActionError("Unbekannte Aktion");
+      throw new ActionError("actionUnknown");
   }
 }
 
@@ -258,13 +259,15 @@ export class ActionService extends EventEmitter {
     if (built.confirm && !confirmed) return { kind: "needs_confirmation", reason: built.confirm, label: built.label };
     const outputs: string[] = [];
     let ok = true;
+    let errorData: DiagnosticMessage | undefined;
     for (const cmd of built.commands) {
       try {
         const body = await this.send("action", cmd);
         outputs.push(body);
         if (looksLikeError(body)) ok = false;
       } catch (e) {
-        outputs.push(`Fehler: ${(e as Error).message}`);
+        errorData = diagnostic("commandFailure", { error: (e as Error).message }, e instanceof DiagnosticError ? { error: e.messageData } : undefined);
+        outputs.push(formatDiagnostic(locale, errorData));
         ok = false;
         break;
       }
@@ -272,7 +275,7 @@ export class ActionService extends EventEmitter {
     }
     const output = outputs.filter(Boolean).join("\n");
     this.audit("action", built.label, built.commands.join("\n"), ok, output, actor);
-    return { kind: "done", result: { ok, label: built.label, commands: built.commands, output } };
+    return { kind: "done", result: { ok, label: built.label, commands: built.commands, output, ...(errorData ? { errorData } : {}) } };
   }
 
   /** Eintrag ins Aktionsprotokoll (auch für Konsolenbefehle) */
@@ -287,7 +290,7 @@ export class ActionService extends EventEmitter {
       this.diag.recordRaw({ at: r.receivedAt, kind, command, body: r.body, fragments: r.fragments, bytes: r.bytes, durationMs: r.durationMs });
       return r.body;
     } catch (e) {
-      this.diag.recordRaw({ at: Date.now(), kind, command, body: "", fragments: 0, bytes: 0, durationMs: 0, error: (e as Error).message });
+      this.diag.recordRaw({ at: Date.now(), kind, command, body: "", fragments: 0, bytes: 0, durationMs: 0, error: (e as Error).message, ...(e instanceof DiagnosticError ? { errorData: e.messageData } : {}) });
       throw e;
     }
   }

@@ -1,11 +1,15 @@
 <script lang="ts">
   import { session } from "../lib/session.svelte";
-  import { normalizeBlueMapUrl } from "../../shared/bluemap";
+  import { diagnostic, DiagnosticError, formatDiagnostic } from "../../shared/diagnostic-messages";
+  import { normalizeBlueMapUrl, type BlueMapAccess } from "../../shared/bluemap";
   import { api } from "../lib/api";
-  import { t } from "../lib/i18n.svelte";
+  import { t, language } from "../lib/i18n.svelte";
 
   let url = $state<string | null>(null);
   let draft = $state("");
+  let access = $state<BlueMapAccess>("all");
+  let draftAccess = $state<BlueMapAccess>("all");
+  const restricted = $derived(access === "operator" && !session.operator);
   let mode = $state<"coordinates" | "bluemap">("coordinates");
   let editing = $state(false);
   let loaded = $state(false);
@@ -17,6 +21,8 @@
     void api.blueMap().then((settings) => {
       url = settings.url;
       draft = url ?? "";
+      access = settings.access;
+      draftAccess = access;
       let preferred = "bluemap";
       try { preferred = localStorage.getItem("mcdash.map.provider") ?? preferred; } catch { /* optional */ }
       mode = url && preferred === "bluemap" ? "bluemap" : "coordinates";
@@ -37,23 +43,25 @@
       if (next && location.protocol === "https:" && new URL(next).protocol !== "https:") {
         throw new Error(t("Bitte für BlueMap HTTPS verwenden."));
       }
-      const result = await api.setBlueMap(next);
+      const result = await api.setBlueMap(next, draftAccess);
       url = result.url;
+      access = result.access;
+      draftAccess = access;
       draft = url ?? "";
       revision++;
       choose(url ? "bluemap" : "coordinates");
       editing = false;
-    } catch (e) { error = t((e as Error).message); }
+    } catch (e) { error = e instanceof DiagnosticError ? formatDiagnostic(language.locale, e.messageData) : (e as Error).message; }
     finally { busy = false; }
   }
 </script>
 
-<section class="bluemap" class:active={mode === "bluemap" && !!url}>
+<section class="bluemap" class:active={mode === "bluemap" && !!url && !restricted}>
   <div class="providers">
     <button class="btn small" class:primary={mode === "coordinates"} aria-pressed={mode === "coordinates"} onclick={() => choose("coordinates")}>{t("Koordinatenkarte")}</button>
     {#if url}<button class="btn small" class:primary={mode === "bluemap"} aria-pressed={mode === "bluemap"} onclick={() => choose("bluemap")}>BlueMap</button>{/if}
-    {#if session.operator}<button class="btn small" disabled={!loaded} aria-expanded={editing} onclick={() => { editing = !editing; draft = url ?? ""; }}>{t("BlueMap einrichten")}</button>{/if}
-    {#if url}<a class="btn small" href={url} target="_blank" rel="noopener noreferrer">{t("BlueMap öffnen")} ↗</a>{/if}
+    {#if session.operator}<button class="btn small" disabled={!loaded} aria-expanded={editing} onclick={() => { editing = !editing; draft = url ?? ""; draftAccess = access; }}>{t("BlueMap einrichten")}</button>{/if}
+    {#if url && !restricted}<a class="btn small" href={url} target="_blank" rel="noopener noreferrer">{t("BlueMap öffnen")} ↗</a>{/if}
   </div>
   {#if editing}
     <form class="panel" onsubmit={(e) => { e.preventDefault(); void save(); }}>
@@ -64,13 +72,24 @@
         <button class="btn primary" type="submit" disabled={busy}>{t("Speichern")}</button>
         {#if url}<button class="btn danger" type="button" disabled={busy} onclick={() => save(true)}>{t("BlueMap entfernen")}</button>{/if}
       </div>
+      <label for="bluemap-access">{t("BlueMap-Zugriff")}</label>
+      <select id="bluemap-access" bind:value={draftAccess}>
+        <option value="all">{t("Alle Dashboard-Benutzer (externe Karte)")}</option>
+        <option value="operator">{t("Nur Operatoren")}</option>
+      </select>
+      <p class="faint">{t("Karten auf derselben Origin erfordern immer ein Operator-Konto. Die Anmeldung der Karte wird weiterhin vom Kartenserver geprüft.")}</p>
       <p class="faint">{t("BlueMap muss Einbettung erlauben. Bei HTTPS muss auch BlueMap HTTPS verwenden.")}</p>
     </form>
   {/if}
   {#if error}<p role="alert" class="error">{t(error)}</p>{/if}
   {#if mode === "bluemap" && url}
-    <iframe src={`/api/bluemap/view?v=${revision}`} title="BlueMap" referrerpolicy="no-referrer" allow="fullscreen" sandbox="allow-scripts allow-same-origin allow-pointer-lock allow-downloads"></iframe>
-    <p class="faint">{t("BlueMap konnte nicht geladen werden? In neuem Tab öffnen oder URL prüfen.")}</p>
+    {#if restricted}
+      <p role="status">{formatDiagnostic(language.locale, diagnostic("blueMapOperator"))}</p>
+    {:else}
+      <iframe src={`/api/bluemap/view?v=${revision}`} title="BlueMap" referrerpolicy="no-referrer" allow="fullscreen" sandbox="allow-scripts allow-same-origin allow-pointer-lock allow-downloads"></iframe>
+      <p class="faint">{t("BlueMap konnte nicht geladen werden? In neuem Tab öffnen oder URL prüfen.")}</p>
+      <p class="faint">{t("Geschützte Karten verwenden deine Dashboard-Anmeldung als Operator. Ein Minecraft-Spielercode ist nicht erforderlich.")}</p>
+    {/if}
   {/if}
 </section>
 

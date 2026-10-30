@@ -123,6 +123,7 @@ export interface ServerStatus {
   connection: ConnectionState;
   /** Fehlermeldung (bei error/auth_failed) */
   message: string | null;
+  messageData?: DiagnosticMessage;
   paused: boolean;
   pausedSince: number | null;
   lastUpdate: number | null;
@@ -168,6 +169,7 @@ export interface ConsoleEntry {
   at: number;
   command: string;
   output: string;
+  outputData?: DiagnosticMessage;
   ok: boolean;
   durationMs: number;
 }
@@ -195,13 +197,14 @@ export interface RawResponse {
   bytes: number;
   durationMs: number;
   error?: string;
+  errorData?: DiagnosticMessage;
   truncatedForDisplay?: boolean;
 }
 
 export interface DiagnosticsSnapshot {
   warnings: DiagnosticWarning[];
   raw: Record<string, RawResponse[]>;
-  rcon: { state: string; lastError: string | null; queueLength: number; commandsSent: number };
+  rcon: { state: string; lastError: string | null; lastErrorData?: DiagnosticMessage | null; lastErrorContext?: Record<string, string> | null; queueLength: number; commandsSent: number };
   startedAt: number;
   version: string;
 }
@@ -250,6 +253,7 @@ export interface ActionResult {
   label: string;
   commands: string[];
   output: string;
+  errorData?: DiagnosticMessage;
 }
 
 export interface GameruleState {

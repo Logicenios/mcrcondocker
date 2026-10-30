@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.2.2](https://github.com/Logicenios/mcrcondocker/releases/tag/v1.2.2) - 2026-10-31
+
+- Localize backend connection, console failure and API validation diagnostics using stable codes; default container logs to English independently of Minecraft item language.
+- Poll namespaced vanilla player lists to bypass EssentialsX, with bounded capability fallback and UUID/truncated-list recovery.
+- Keep startup connection refusal in a waiting state while preserving readiness, reconnect backoff and later outage reporting.
+- Enforce operator sessions for same-origin BlueMap URLs, add a configurable external-map access policy and explain viewer login requirements.
+- Document protected same-origin `/map/` integration and the versioned fork image upgrade.
+
 ## [1.2.1](https://github.com/Logicenios/mcrcondocker/releases/tag/v1.2.1) - 2026-10-30
 
 ### Fixed

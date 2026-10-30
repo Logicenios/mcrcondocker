@@ -1,3 +1,4 @@
+import { DiagnosticError } from "../../shared/diagnostic-messages.js";
 // RCON-Paketformat (Source RCON, wie von Minecraft verwendet):
 //   int32 LE  length   (Anzahl Bytes nach diesem Feld)
 //   int32 LE  requestId
@@ -36,7 +37,7 @@ export function encodePacket(id: number, type: number, body: string): Buffer {
   return buf;
 }
 
-export class ProtocolError extends Error {}
+export class ProtocolError extends DiagnosticError {}
 
 /** Setzt Pakete aus beliebig zerstückelten TCP-Daten zusammen. */
 export class PacketDecoder {
@@ -48,7 +49,7 @@ export class PacketDecoder {
     while (this.buffer.length >= 4) {
       const length = this.buffer.readInt32LE(0);
       if (length < 10 || length > MAX_INCOMING_PACKET_BYTES) {
-        throw new ProtocolError(`Ungültige Paketlänge ${length}`);
+        throw new ProtocolError("rconPacketLength", { length });
       }
       if (this.buffer.length < 4 + length) break;
       const id = this.buffer.readInt32LE(4);

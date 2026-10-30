@@ -8,7 +8,7 @@ Before upgrading an existing database, make a verified backup. The user-account 
 
 ## Viewer and operator identities
 
-Operators manage accounts on **Users**. Create a named account and choose **Viewer** or **Operator**. Viewers can read players, inventories, the coordinate/BlueMap view, and playtime. Console history, raw diagnostics, audit history, world administration, user management, backups, and all server mutations require operator permission in the API. Viewer live streams omit console/audit events.
+Operators manage accounts on **Users**. Create a named account and choose **Viewer** or **Operator**. Viewers can read players, inventories, the coordinate map, BlueMap when configured for all users, and playtime. Same-origin BlueMap URLs and maps marked **Operators only** require an enabled operator session. Console history, raw diagnostics, audit history, world administration, user management, backups, and all server mutations require operator permission in the API. Viewer live streams omit console/audit events.
 
 Passwords are stored as salted scrypt hashes. Password, role, and enabled-status changes revoke that account's sessions, including open live streams. The bootstrap `admin` account cannot be disabled or downgraded through the UI. Change its password using `DASHBOARD_PASSWORD` and restart; the old administrator sessions are revoked. Existing API clients that omit a username still authenticate as `admin`.
 
@@ -131,3 +131,124 @@ git push origin v1.2.3
 ```
 
 Use a new version tag for each release. Container publishing does not deploy or restart any server.
+
+## Paper/EssentialsX and same-origin BlueMap
+
+This fix is validated with mock RCON/API/browser tests covering Paper-style responses, Essentials-shadowed commands and offline UUIDs.
+It does not change the Minecraft server, plugins, Java runtime or RCON credentials. No live server was
+contacted during verification.
+
+### Diagnostics and player polling
+
+Backend/container log text is English by default. `LANGUAGE_FILE=en_us` continues
+to control fallback Minecraft item names only; it is not a log-locale option.
+The UI's English/German selection formats structured connection, parser, console
+failure and API validation messages using stable IDs and parameters. API errors
+include `code` and `errorData`, plus an `error` string formatted using
+`Accept-Language` (English fallback). Status/SSE/diagnostic records retain message
+metadata so switching UI language does not restart polling or reinterpret text.
+Original server responses, commands, player names, historical audit entries and
+original diagnostic strings/raw excerpts remain unchanged in debug exports.
+Socket context preserves the OS error code and syscall; credentials and private
+RCON addresses are excluded.
+
+Player polling starts with `minecraft:list uuids`, bypassing EssentialsX's `/list`
+handler. Only an explicit unknown/incomplete-command response permits the next
+candidate: `minecraft:list`, then `list uuids`, then `list`. The working candidate
+and rejected capabilities are cached for the process lifetime, including RCON
+reconnects. A malformed response or transport failure never triggers downgrade.
+If every candidate is rejected, polling reports the persistent capability error
+without resending rejected commands; correct permissions/server configuration
+and restart the dashboard to probe again. A names-only or truncated result uses
+the existing per-player UUID query; UUIDs come from Minecraft rather than a
+Mojang lookup or an offline-name guess. This preserves offline UUIDs and session
+tracking. Manual console commands are sent as entered and may still be logged
+by EssentialsX. One shared poller runs at `POLL_INTERVAL_SECONDS` (default 5);
+opening more dashboard tabs does not create additional polling connections.
+
+During initial connection refusal/timeout the dashboard stays available and
+reports **Waiting for Minecraft RCON**. Each reconnect attempt still logs its
+cause, with the existing exponential backoff (up to 60 seconds). Authentication,
+DNS and protocol failures remain visible; a loss after a successful connection
+is reported as an error. `/healthz` remains HTTP 200 while the dashboard is alive;
+`/readyz` remains HTTP 503 until a successful, fresh, non-degraded poll. Do not
+replace liveness with readiness or restart the dashboard repeatedly while Paper
+is booting. A persistent refusal still requires checking `enable-rcon`, port and
+network configuration.
+
+### Example: shared network namespace and protected map
+
+If the dashboard shares Minecraft's network namespace, keep that namespace and
+the existing data mount.
+The dashboard can use **`127.0.0.1:25575`** for RCON in that namespace; do not replace
+this with the public game address `minecraft.example.com`, publish the RCON port, or
+apply the standalone example's networking to this deployment.
+
+```dotenv
+RCON_HOST=127.0.0.1
+RCON_PORT=25575
+LANGUAGE_FILE=en_us
+TRUST_PROXY=true
+COOKIE_SECURE=true
+```
+
+Retain the existing secret values for `RCON_PASSWORD` and `DASHBOARD_PASSWORD`.
+Only enable proxy trust when access reaches the dashboard through your trusted
+Caddy proxy; preserve the original Host header and forwarded HTTPS scheme.
+
+For example, log in to **`https://dashboard.example.com:2053`** using the environment-managed
+**admin** account (or another enabled operator). In **Map → Configure BlueMap**,
+set **`https://dashboard.example.com:2053/map/`** and **Operators only**. The
+settings API also accepts `{ "url": "https://dashboard.example.com:2053/map/",
+"access": "operator" }`. Same-origin URLs enforce this policy even if a caller
+requests `access: "all"`. The map URL is preserved, including the port and trailing
+slash, and `/api/bluemap/view` renders the existing sandboxed iframe without a
+player code, URL token, backend URL fetch or unauthenticated map proxy.
+
+Caddy must continue checking the real cookie against `/api/session` on every
+protected map request: require `authenticated === true`, `user.enabled === true`
+and `user.role === "operator"`. **A 200 response alone is insufficient** because
+`/api/session` intentionally returns 200 with `authenticated: false` after logout
+or revocation. Keep this JSON-aware authorization layer on `/map/` and its assets;
+the dashboard wrapper is not a replacement for the map server's access control.
+Keep `mcdash_session` host-only, HttpOnly, Secure and SameSite=Strict; no Domain
+attribute or subdomain sharing is needed for this URL. Keep session revocation,
+CSRF checks and the iframe sandbox. Caddy/BlueMap must allow frames from the
+dashboard's same origin (`frame-ancestors 'self'`, not `DENY`); the dashboard's
+main document remains unframeable. Viewer sessions receive a localized operator
+login explanation and cannot load the protected frame. An already loaded map
+cannot be erased from browser memory on revocation, but subsequent protected
+requests must fail the Caddy session check.
+
+### Apply the 1.2.2 fix image
+
+The `v1.2.2` tag triggers the fork's checked multi-architecture image build. After
+the Container release workflow succeeds, pull the versioned image on your deployment
+host:
+
+```sh
+podman pull ghcr.io/logicenios/mcrcondocker:1.2.2
+```
+
+In your **existing deployment** service definition, change only the dashboard
+image to `ghcr.io/logicenios/mcrcondocker:1.2.2` and keep its existing shared
+network namespace, mounts, secrets and Caddy configuration. Recreate only the
+dashboard when you choose to deploy. For a Compose deployment using this repo's
+service name (`mc-dashboard`), the command is:
+
+```sh
+# Run from the directory containing your actual deployment Compose file,
+# after editing its dashboard image and retaining its networking configuration.
+podman compose up -d --no-deps --pull never mc-dashboard
+podman logs --tail 100 mc-dashboard
+podman exec mc-dashboard node -e "fetch('http://127.0.0.1:8080/healthz').then(async r=>{console.log(r.status,await r.text());process.exit(r.ok?0:1)})"
+podman exec mc-dashboard node -e "fetch('http://127.0.0.1:8080/readyz').then(async r=>{console.log(r.status,await r.text());process.exit(r.ok?0:1)})"
+```
+
+Use your deployment's dashboard service/container name if it differs; do not
+recreate Minecraft or replace the active Compose file with the standalone
+repository example. During Paper startup readiness may return 503 while liveness
+and dashboard login work. After startup confirm the operator map loads and a
+viewer is denied. Live Caddy authorization/plugin behavior is not proven by the
+local mocks and must be checked after your chosen deployment. Publishing an image
+does not deploy it or change the original upstream repository.

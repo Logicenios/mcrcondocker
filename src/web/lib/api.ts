@@ -1,3 +1,4 @@
+import { formatDiagnostic, type DiagnosticMessage } from "../../shared/diagnostic-messages";
 import type { RenderIndex } from "../../shared/appearance";
 import type { DashboardUser, LoginSession, UserRole } from "../../shared/users";
 import type { BlueMapSettings } from "../../shared/bluemap";
@@ -38,7 +39,7 @@ async function request<T>(method: string, url: string, body?: unknown): Promise<
   }
   if (!res.ok) {
     if (res.status === 401 && url !== "/api/login") onUnauthorized();
-    throw new ApiError(typeof data.error === "string" ? t(data.error) : t("Fehler {status}", { status: res.status }), res.status, data);
+    throw new ApiError(data.errorData ? formatDiagnostic(language.locale, data.errorData as DiagnosticMessage) : typeof data.error === "string" ? data.error : t("Fehler {status}", { status: res.status }), res.status, data);
   }
   return data as T;
 }
@@ -55,7 +56,7 @@ export const api = {
   backups: () => request<{ name: string; createdAt: number; bytes: number }[]>("GET", "/api/backups"),
   createBackup: () => request<{ name: string; createdAt: number; bytes: number }>("POST", "/api/backups", {}),
   blueMap: () => request<BlueMapSettings>("GET", "/api/settings/bluemap"),
-  setBlueMap: (url: string | null) => request<BlueMapSettings>("POST", "/api/settings/bluemap", { url }),
+  setBlueMap: (url: string | null, access: BlueMapSettings["access"] = "all") => request<BlueMapSettings>("POST", "/api/settings/bluemap", { url, access }),
   session: () => request<LoginSession>("GET", "/api/session"),
   login: (password: string, username = "admin") => request<{ ok: true; user: DashboardUser }>("POST", "/api/login", { password, username }),
   users: () => request<DashboardUser[]>("GET", "/api/users"),

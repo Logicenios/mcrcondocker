@@ -2,6 +2,12 @@
 export type Locale = "en" | "de";
 export const LOCALES = { en: "English", de: "Deutsch" } as const;
 export const ENGLISH: Record<string, string> = {
+  "Wartet auf Minecraft RCON": "Waiting for Minecraft RCON",
+  "BlueMap-Zugriff": "BlueMap access",
+  "Alle Dashboard-Benutzer (externe Karte)": "All dashboard users (external map)",
+  "Nur Operatoren": "Operators only",
+  "Karten auf derselben Origin erfordern immer ein Operator-Konto. Die Anmeldung der Karte wird weiterhin vom Kartenserver geprüft.": "Same-origin maps always require an operator account. Map authentication is still checked by the map server.",
+  "Geschützte Karten verwenden deine Dashboard-Anmeldung als Operator. Ein Minecraft-Spielercode ist nicht erforderlich.": "Protected maps use your dashboard login as an operator. No Minecraft player code is required.",
   "Tab ergänzt · ↑/↓ wählt · Enter übernimmt · Esc schließt": "Tab completes · ↑/↓ selects · Enter accepts · Esc closes",
   "Spieleraktivität": "Player activity",
   "Welteinstellungen, Nachrichten und Serveraktionen verwalten.": "Manage world settings, messages, and server actions.",

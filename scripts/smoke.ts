@@ -257,7 +257,7 @@ try {
   await page.getByRole("button", { name: "Remove BlueMap" }).click();
   await page.locator(".map-view").waitFor({ state: "visible" });
   const settings = await context.request.get(`${base}/api/settings/bluemap`).then((response) => response.json());
-  assert.deepEqual(settings, { url: null });
+  assert.deepEqual(settings, { url: null, access: "all" });
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto(`${base}/#/users`);
   await page.getByRole("heading", { name: "Database backups", exact: true }).waitFor();
@@ -290,6 +290,21 @@ try {
   await viewerPage.evaluate(async () => { await document.fonts.ready; await new Promise<void>((resolve) => requestAnimationFrame(() => resolve())); });
   assert.equal(await viewerPage.getByRole("tab").count(), 2, "Viewer navigation includes an administrative tab");
   assert(await viewerPage.evaluate(() => document.documentElement.scrollWidth <= innerWidth), "German viewer player layout overflows at 320px");
+  // Model the deployment's operator-only /map/ route without contacting the live server.
+  const protectedMap = `${base}/map/`;
+  const protectedSettings = await context.request.post(`${base}/api/settings/bluemap`, { data: { url: protectedMap, access: "operator" } });
+  assert.deepEqual(await protectedSettings.json(), { url: protectedMap, access: "operator" });
+  await viewerPage.setViewportSize({ width: 375, height: 812 });
+  await viewerPage.goto(`${base}/#/map`);
+  await viewerPage.getByRole("button", { name: "BlueMap", exact: true }).click();
+  await viewerPage.getByRole("status").filter({ hasText: "Minecraft-Spielercode" }).waitFor();
+  assert.equal(await viewerPage.locator('iframe[title="BlueMap"]').count(), 0);
+  await viewerPage.getByLabel("Sprache").selectOption("en");
+  await viewerPage.getByRole("status").filter({ hasText: "no Minecraft player code" }).waitFor();
+  assert(await viewerPage.evaluate(() => document.documentElement.scrollWidth <= innerWidth), "Viewer BlueMap notice overflows");
+  assert(!viewerRequests.includes("/map/"), "Viewer requested the protected map");
+  assert.equal((await viewer.request.get(`${base}/api/bluemap/view`)).status(), 403);
+  await context.request.post(`${base}/api/settings/bluemap`, { data: { url: null } });
   await viewerPage.evaluate(() => new Promise<void>((resolve) => {
     const state = window as unknown as { smokeEvents: string[]; smokeSource: EventSource };
     state.smokeEvents = []; state.smokeSource = new EventSource("/api/events");

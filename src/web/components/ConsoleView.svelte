@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { formatDiagnostic } from "../../shared/diagnostic-messages";
   import { onMount, tick } from "svelte";
   import { t as tr, language } from "../lib/i18n.svelte";
   import { consoleSegments } from "../../shared/console-text";
@@ -69,7 +70,7 @@
   );
   const renderedEntries = $derived(
     live.console.map((entry) => {
-      const segments = consoleSegments(entry.output);
+      const segments = consoleSegments(entry.outputData ? formatDiagnostic(language.locale, entry.outputData) : entry.output);
       const plain = segments.map((segment) => segment.text).join("");
       return {
         ...entry,
