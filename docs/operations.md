@@ -115,7 +115,7 @@ CI runs unit tests, Svelte/TypeScript checks, the production build, and browser 
 
 ## GitHub container releases
 
-The container workflow publishes to `ghcr.io/logicenios/mcrcondocker` for `linux/amd64` and `linux/arm64`. Ordinary pushes to `main` run CI but do not publish an image. Container publishing waits for the reusable CI workflow, including browser smoke checks.
+The container workflow publishes to `ghcr.io/irgendeinjohan/mcrcondocker` for `linux/amd64` and `linux/arm64`. Ordinary pushes to `main` run CI but do not publish an image. Container publishing waits for the reusable CI workflow, including browser smoke checks.
 
 - Push a stable version tag, e.g. `v1.2.3`: publishes `:1.2.3`, `:1.2`, `:latest`, and `:sha-<full-commit-SHA>`.
 - Push a prerelease tag, e.g. `v1.2.3-beta.1`: publishes the prerelease version and commit tag; does not move `:latest` or the minor-version tag.

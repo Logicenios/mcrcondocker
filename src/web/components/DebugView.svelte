@@ -77,7 +77,7 @@
         <div><span class="k">{tr("Sprachdatei")}</span> {data.assets.language ? `${data.assets.language} (${data.assets.translations})` : tr("keine")}</div>
         <div>
           <span class="k">{tr("Lizenzen")}</span>
-          <a href="https://github.com/Logicenios/mcrcondocker/blob/main/LICENSE" target="_blank" rel="noopener">MIT</a>
+          <a href="https://github.com/irgendeinjohan/mcrcondocker/blob/main/LICENSE" target="_blank" rel="noopener">MIT</a>
           · <a href="/third-party-licenses.md" target="_blank" rel="noopener">{tr("Drittanbieter")}</a>
         </div>
         {#if data.status.degraded}<div class="warnc">{tr("Rückfallweg aktiv: Spielerdaten nur eingeschränkt lesbar")}</div>{/if}

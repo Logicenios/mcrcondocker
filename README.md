@@ -8,8 +8,8 @@
 
 Spieler, Inventare, Karte, Konsole und Online-Zeiten auf einen Blick – im Browser und auf dem Handy.
 
-[![Tests](https://github.com/Logicenios/mcrcondocker/actions/workflows/ci.yml/badge.svg)](https://github.com/Logicenios/mcrcondocker/actions/workflows/ci.yml)
-[![Docker-Image](https://github.com/Logicenios/mcrcondocker/actions/workflows/docker.yml/badge.svg)](https://github.com/Logicenios/mcrcondocker/pkgs/container/mcrcondocker)
+[![Tests](https://github.com/irgendeinjohan/mcrcondocker/actions/workflows/ci.yml/badge.svg)](https://github.com/irgendeinjohan/mcrcondocker/actions/workflows/ci.yml)
+[![Docker-Image](https://github.com/irgendeinjohan/mcrcondocker/actions/workflows/docker.yml/badge.svg)](https://github.com/irgendeinjohan/mcrcondocker/pkgs/container/mcrcondocker)
 ![Plattformen](https://img.shields.io/badge/docker-amd64%20%7C%20arm64-2496ED?logo=docker&logoColor=white)
 ![Minecraft](https://img.shields.io/badge/getestet%20mit-Paper%2026.3-5bbf5b)
 [![Lizenz: MIT](https://img.shields.io/badge/Lizenz-MIT-blue)](LICENSE)
@@ -147,7 +147,7 @@ Danach den Server **neu starten**, denn RCON wird nur beim Start aktiviert.
 
 ### Schritt 2: Container starten
 
-Das fertige Image: **`ghcr.io/logicenios/mcrcondocker:latest`**
+Das fertige Image: **`ghcr.io/irgendeinjohan/mcrcondocker:latest`**
 
 <details open>
 <summary><b>Mit Docker Compose (empfohlen)</b></summary>
@@ -157,7 +157,7 @@ Das fertige Image: **`ghcr.io/logicenios/mcrcondocker:latest`**
 ```yaml
 services:
   mc-dashboard:
-    image: ghcr.io/logicenios/mcrcondocker:latest
+    image: ghcr.io/irgendeinjohan/mcrcondocker:latest
     container_name: mc-dashboard
     restart: unless-stopped
     environment:
@@ -191,7 +191,7 @@ docker run -d --name mc-dashboard --restart unless-stopped \
   -e RCON_HOST="192.168.1.50" \
   -e RCON_PORT="25575" \
   -e RCON_PASSWORD="dein-rcon-passwort" \
-  ghcr.io/logicenios/mcrcondocker:latest
+  ghcr.io/irgendeinjohan/mcrcondocker:latest
 ```
 
 </details>
@@ -212,7 +212,7 @@ docker run -d --name mc-dashboard --restart unless-stopped \
 <details>
 <summary><b>Unraid, Portainer, TrueNAS, CasaOS …</b></summary>
 
-Überall, wo du einen Container oder einen Compose-Stack anlegen kannst, funktioniert es gleich: Image `ghcr.io/logicenios/mcrcondocker:latest`, Port `8080`, ein Ordner für `/data` und die Umgebungsvariablen aus der [Konfiguration](#konfiguration).
+Überall, wo du einen Container oder einen Compose-Stack anlegen kannst, funktioniert es gleich: Image `ghcr.io/irgendeinjohan/mcrcondocker:latest`, Port `8080`, ein Ordner für `/data` und die Umgebungsvariablen aus der [Konfiguration](#konfiguration).
 
 </details>
 
@@ -220,7 +220,7 @@ docker run -d --name mc-dashboard --restart unless-stopped \
 <summary><b>Selbst bauen</b></summary>
 
 ```bash
-git clone https://github.com/Logicenios/mcrcondocker.git
+git clone https://github.com/irgendeinjohan/mcrcondocker.git
 cd mcrcondocker
 docker build -t mc-dashboard .
 ```
@@ -324,7 +324,7 @@ Die RCON-Zugangsdaten werden nie an den Browser geschickt und nie protokolliert.
 | „Verbindung abgelehnt (RCON aktiv? Port richtig?)“ | `enable-rcon=true` gesetzt und Server neu gestartet? RCON-Port richtig? Firewall? |
 | „RCON-Passwort falsch“ | `RCON_PASSWORD` mit `rcon.password` vergleichen |
 | „Zeitüberschreitung beim Verbinden“ | IP/Hostname falsch, Server offline oder Port blockiert |
-| `unauthorized` beim Laden des Images | Image-Namen prüfen: `ghcr.io/logicenios/mcrcondocker:latest` |
+| `unauthorized` beim Laden des Images | Image-Namen prüfen: `ghcr.io/irgendeinjohan/mcrcondocker:latest` |
 | Inventare fehlen, Hinweis „Rückfallweg“ | Das Datenformat hat sich geändert (z. B. nach einem Minecraft-Update). Bitte ein Issue mit dem Debug-Export erstellen |
 | Container startet nicht | Container-Protokoll ansehen. Meist fehlt eine Pflichtvariable oder das Passwort ist zu kurz |
 | Warnung „/data ist … nicht beschreibbar“ | `PUID`/`PGID` setzen |
@@ -363,7 +363,7 @@ npm run build     # Produktions-Build
 <details>
 <summary>🇬🇧 <b>English summary</b></summary>
 
-**MC-Dashboard** is a self-hosted web dashboard for Minecraft Java servers that works **purely over RCON**, so no plugins or mods are needed. It shows online players (including Bedrock players via Geyser/Floodgate) with coordinates, health, hunger, XP and **full inventories** (hotbar, armor, offhand, ender chest, shulker contents) in an in-game-style grid. It also offers a pannable/zoomable 2D map per dimension, an RCON console with color codes and confirmation for dangerous commands, playtime tracking, a pause switch, and a self-diagnosis page. It runs as a single multi-arch Docker container (`ghcr.io/logicenios/mcrcondocker:latest`) and works well as a home-screen web app on phones.
+**MC-Dashboard** is a self-hosted web dashboard for Minecraft Java servers that works **purely over RCON**, so no plugins or mods are needed. It shows online players (including Bedrock players via Geyser/Floodgate) with coordinates, health, hunger, XP and **full inventories** (hotbar, armor, offhand, ender chest, shulker contents) in an in-game-style grid. It also offers a pannable/zoomable 2D map per dimension, an RCON console with color codes and confirmation for dangerous commands, playtime tracking, a pause switch, and a self-diagnosis page. It runs as a single multi-arch Docker container (`ghcr.io/irgendeinjohan/mcrcondocker:latest`) and works well as a home-screen web app on phones.
 
 **This project was 100 % "vibecoded":** all code, tests and docs were written by AI (Claude by Anthropic), tested against a real Paper 26.3 server. The UI supports English and German; the original documentation below is in German.
 
