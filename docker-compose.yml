@@ -2,7 +2,7 @@
 # Variante mit Werten direkt in der Datei (z. B. für Synology/Portainer): siehe README.
 services:
   mc-dashboard:
-    image: ghcr.io/irgendeinjohan/mcrcondocker:latest
+    image: ghcr.io/logicenios/mcrcondocker:latest
     # Alternativ selbst bauen (Ordner enthält den Quellcode): Zeile oben auskommentieren, diese aktivieren
     # build: .
     container_name: mc-dashboard
