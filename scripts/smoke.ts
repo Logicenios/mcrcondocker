@@ -8,7 +8,7 @@ import { mkdtemp, rm, mkdir, writeFile, copyFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { chromium } from "playwright-core";
+import { chromium, type Page } from "playwright-core";
 
 const root = process.cwd();
 const temporary = await mkdtemp(path.join(tmpdir(), "mcdash-smoke-"));
@@ -44,6 +44,7 @@ let serverOutput = "";
 server.stdout.on("data", (chunk) => { serverOutput += chunk; });
 server.stderr.on("data", (chunk) => { serverOutput += chunk; });
 let browser: Awaited<ReturnType<typeof chromium.launch>> | undefined;
+let failurePage: Page | undefined;
 try {
   let ready = false;
   for (let attempt = 0; attempt < 100; attempt++) {
@@ -52,9 +53,12 @@ try {
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
   assert(ready, `Mock server did not start: ${serverOutput}`);
-  browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH || (existsSync(chromium.executablePath()) ? chromium.executablePath() : "/usr/bin/google-chrome"), args: ["--no-sandbox", "--enable-unsafe-swiftshader", "--use-angle=swiftshader"] });
+  const executablePath = process.env.CHROMIUM_PATH || chromium.executablePath();
+  assert(existsSync(executablePath), "Install the pinned browser with: node node_modules/playwright-core/cli.js install chromium (or explicitly set CHROMIUM_PATH).");
+  browser = await chromium.launch({ executablePath, args: ["--no-sandbox", "--enable-unsafe-swiftshader", "--use-angle=swiftshader"] });
   const context = await browser.newContext({ locale: "en-GB", viewport: { width: 1440, height: 1000 } });
   const page = await context.newPage();
+  failurePage = page;
   const errors: string[] = [];
   const requests: string[] = [];
   page.on("request", (request) => requests.push(new URL(request.url()).pathname));
@@ -219,10 +223,19 @@ try {
   assert.equal(await page.getByRole("navigation", { name: "Mobile navigation", exact: true }).getByRole("link").count(), 3);
   await screenshot("inventory-mobile");
   await page.getByLabel("Language").selectOption("de");
-  for (const width of [320, 768, 1024]) {
-    await page.setViewportSize({ width, height: 900 });
-    assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `German player layout overflows at ${width}px`);
+  for (const font of [null, "Arial, sans-serif", '"DejaVu Sans", sans-serif']) {
+    await page.evaluate((family) => {
+      if (family) document.documentElement.style.setProperty("--font", family);
+      else document.documentElement.style.removeProperty("--font");
+    }, font);
+    for (const width of [320, 768, 1024]) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.evaluate(async () => { await document.fonts.ready; await new Promise<void>((resolve) => requestAnimationFrame(() => resolve())); });
+      assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `German player layout overflows at ${width}px (${font ?? "system font"})`);
+      if (width === 320 && font?.includes("DejaVu")) await screenshot("inventory-mobile-de-wide-font");
+    }
   }
+  await page.evaluate(() => document.documentElement.style.removeProperty("--font"));
   await page.setViewportSize({ width: 375, height: 812 });
   await screenshot("inventory-mobile-de");
   await page.getByLabel("Sprache").selectOption("en");
@@ -272,6 +285,11 @@ try {
   assert.equal(await viewerPage.locator(".player-actions").count(), 0);
   assert(!viewerRequests.includes("/api/console"), "Viewer requested administrative console history");
   assert.equal(await viewerPage.getByRole("tab", { name: "Actions", exact: true }).count(), 0);
+  await viewerPage.setViewportSize({ width: 320, height: 900 });
+  await viewerPage.getByLabel("Language").selectOption("de");
+  await viewerPage.evaluate(async () => { await document.fonts.ready; await new Promise<void>((resolve) => requestAnimationFrame(() => resolve())); });
+  assert.equal(await viewerPage.getByRole("tab").count(), 2, "Viewer navigation includes an administrative tab");
+  assert(await viewerPage.evaluate(() => document.documentElement.scrollWidth <= innerWidth), "German viewer player layout overflows at 320px");
   await viewerPage.evaluate(() => new Promise<void>((resolve) => {
     const state = window as unknown as { smokeEvents: string[]; smokeSource: EventSource };
     state.smokeEvents = []; state.smokeSource = new EventSource("/api/events");
@@ -288,6 +306,25 @@ try {
   await viewer.close();
   assert.deepEqual(errors, [], "Browser errors");
   console.log(`Browser smoke passed: administration workflows, selected-language metadata, command/player/item/history completion without execution, Minecraft/ANSI colors and escaped output, German administration layouts at 320/375px, deferred console/renderer requests, inventory/action tabs, responsive navigation and focus, language persistence, localized inventory/tooltips, ${allIcons.length} catalog items, rendered icons, BlueMap configuration/embedding, world tabs, command confirmation, mobile layout, component variants, viewer permissions/SSE revocation, and verified backup downloads.`);
+} catch (error) {
+  if (process.env.SMOKE_ARTIFACT_DIR && failurePage) {
+    await mkdir(process.env.SMOKE_ARTIFACT_DIR, { recursive: true });
+    const layout = await failurePage.evaluate(() => ({
+      viewport: innerWidth, document: document.documentElement.scrollWidth,
+      language: document.documentElement.lang,
+      overflowing: [...document.querySelectorAll("body *")].filter((element) => {
+        const box = element.getBoundingClientRect();
+        return box.width > 0 && (box.right > innerWidth + 1 || box.left < -1);
+      }).slice(0, 30).map((element) => {
+        const box = element.getBoundingClientRect(), style = getComputedStyle(element);
+        return { tag: element.tagName, class: element.getAttribute("class"), width: box.width, right: box.right, font: style.font, minWidth: style.minWidth };
+      }),
+    })).catch(() => ({ unavailable: true }));
+    console.error("Smoke failure layout:", JSON.stringify(layout));
+    await writeFile(path.join(process.env.SMOKE_ARTIFACT_DIR, "failure-layout.json"), JSON.stringify({ browser: browser?.version(), ...layout }, null, 2));
+    await failurePage.screenshot({ path: path.join(process.env.SMOKE_ARTIFACT_DIR, "failure.png"), fullPage: true }).catch(() => {});
+  }
+  throw error;
 } finally {
   await browser?.close();
   server.kill("SIGTERM");

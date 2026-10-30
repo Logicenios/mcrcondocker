@@ -21,3 +21,7 @@ backups
 *.db-wal
 *.db-shm
 *.partial
+
+# Browser diagnostics are CI artifacts, never container inputs.
+test-results
+playwright-report

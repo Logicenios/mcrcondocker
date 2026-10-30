@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.2.1](https://github.com/Logicenios/mcrcondocker/releases/tag/v1.2.1) - 2026-10-30
+
+### Fixed
+
+- Keep player tabs inside the viewport at 320px with wider system fonts and German labels. Narrow layouts use equal, shrinkable columns for the tabs visible to each account role.
+- Use Playwright's pinned Chromium for local smoke tests by default; selecting a system browser now requires an explicit `CHROMIUM_PATH` override.
+
+### Verification and diagnostics
+
+- Extend browser regressions across system, Arial, and DejaVu Sans fonts and the two-tab viewer layout.
+- Wait for browser font/layout updates before measuring responsive layouts.
+- Capture failed smoke screenshots, browser version, and overflowing-element metrics; upload these as seven-day CI artifacts.
+- Exclude browser diagnostic artifacts from container build contexts.
+
 ## [1.2.0](https://github.com/Logicenios/mcrcondocker/releases/tag/v1.2.0) - 2026-10-30
 
 First feature release of this fork, including the dashboard improvements developed since the original 1.1.1 codebase.

@@ -352,6 +352,8 @@
   }
   :global(.player-tabs) {
     display: flex;
+    flex-wrap: wrap;
+    max-width: 100%;
     gap: 6px;
     padding: 4px;
     width: fit-content;
@@ -406,6 +408,22 @@
   .vitals .level {
     color: var(--accent);
   }
+  @media (max-width: 600px) {
+    :global(.player-tabs) {
+      display: grid;
+      grid-auto-flow: column;
+      grid-auto-columns: minmax(0, 1fr);
+      width: 100%;
+    }
+    :global(.player-tab) {
+      min-width: 0;
+      justify-content: center;
+      padding: 9px 8px;
+      white-space: normal;
+      overflow-wrap: anywhere;
+      text-align: center;
+    }
+  }
   @media (max-width: 420px) {
     .vitals {
       padding: 12px;
@@ -415,7 +433,7 @@
       display: none;
     }
     :global(.player-tab) {
-      padding: 9px 12px;
+      padding: 9px 8px;
       gap: 6px;
     }
     :global(.player-tab svg) { display: none; }

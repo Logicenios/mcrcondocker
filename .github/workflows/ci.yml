@@ -30,4 +30,16 @@ jobs:
       - run: npm run assets:download && npm run assets:models
         if: steps.game-assets.outputs.cache-hit != 'true'
       - run: node node_modules/playwright-core/cli.js install --with-deps chromium
-      - run: npm run test:smoke
+      - name: Browser smoke
+        id: smoke
+        run: npm run test:smoke
+        env:
+          SMOKE_ARTIFACT_DIR: test-results/smoke
+      - name: Upload smoke failure diagnostics
+        if: ${{ failure() && steps.smoke.outcome == 'failure' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-failure-${{ github.run_id }}-${{ github.run_attempt }}
+          path: test-results/smoke
+          if-no-files-found: ignore
+          retention-days: 7

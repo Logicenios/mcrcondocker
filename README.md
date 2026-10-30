@@ -58,12 +58,13 @@ Console output preserves Minecraft section-sign formatting and supports ANSI for
 For a repeatable browser smoke check after building and downloading assets:
 
 ```sh
-CHROMIUM_PATH=/usr/bin/google-chrome npm run test:smoke
+node node_modules/playwright-core/cli.js install chromium
+npm run test:smoke
 # Optional desktop/mobile screenshots from that isolated run:
 SMOKE_ARTIFACT_DIR=/tmp/mcdash-smoke npm run test:smoke
 ```
 
-The smoke check starts its own temporary mock server and database. It does not connect to a live Minecraft server.
+The smoke check starts its own temporary mock server and database. It does not connect to a live Minecraft server. It uses Playwright’s pinned Chromium by default so local checks match CI. Set `CHROMIUM_PATH` explicitly to test another browser. Failed CI smoke runs upload screenshots and layout diagnostics as a short-lived Actions artifact.
 
 ---
 
