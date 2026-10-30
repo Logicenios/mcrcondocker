@@ -1,59 +1,85 @@
 <script lang="ts">
+  import { Tabs } from "bits-ui";
   import { t as tr } from "../lib/i18n.svelte";
   import { router } from "../lib/router.svelte";
-  import AuditLog from "./world/AuditLog.svelte";
-  import BansPanel from "./world/BansPanel.svelte";
-  import MessagesPanel from "./world/MessagesPanel.svelte";
-  import WorldSettings from "./world/WorldSettings.svelte";
-
+  import PageHeader from "./ui/PageHeader.svelte";
+  import Icon from "./ui/Icon.svelte";
   const tabs = [
-    { id: "welt", label: "Welt" },
-    { id: "nachrichten", label: "Nachrichten" },
-    { id: "banns", label: "Bann-Liste" },
-    { id: "protokoll", label: "Protokoll" },
+    {
+      id: "welt",
+      label: "Welt",
+      icon: "world",
+      load: () => import("./world/WorldSettings.svelte"),
+    },
+    {
+      id: "nachrichten",
+      label: "Nachrichten",
+      icon: "messages",
+      load: () => import("./world/MessagesPanel.svelte"),
+    },
+    {
+      id: "banns",
+      label: "Bann-Liste",
+      icon: "users",
+      load: () => import("./world/BansPanel.svelte"),
+    },
+    {
+      id: "protokoll",
+      label: "Protokoll",
+      icon: "sessions",
+      load: () => import("./world/AuditLog.svelte"),
+    },
   ];
-  const tab = $derived(tabs.some((t) => t.id === router.param) ? router.param! : "welt");
+  const tab = $derived(tabs.find((t) => t.id === router.param) ?? tabs[0]!);
 </script>
 
-<div class="world">
-  <div class="tabs" role="tablist">
-    {#each tabs as t (t.id)}
-      <button role="tab" class="tab" class:active={tab === t.id} aria-selected={tab === t.id} onclick={() => router.go("world", t.id)}>
-        {tr(t.label)}
-      </button>
+<div class="page-stack">
+  <PageHeader
+    title={tr("Welt")}
+    description={tr(
+      "Welteinstellungen, Nachrichten und Serveraktionen verwalten.",
+    )}
+    icon="world"
+  />
+  <Tabs.Root
+    value={tab.id}
+    onValueChange={(value) => router.go("world", value)}
+  >
+    <Tabs.List class="section-tabs" aria-label={tr("Weltverwaltung")}>
+      {#each tabs as item (item.id)}<Tabs.Trigger
+          class="section-tab"
+          value={item.id}
+          ><Icon name={item.icon} size={17} />{tr(item.label)}</Tabs.Trigger
+        >{/each}
+    </Tabs.List>
+    {#each tabs as item (item.id)}
+      <Tabs.Content value={item.id} class="world-content">
+        {#if tab.id === item.id}
+          {#await item.load()}<div class="panel muted" role="status">
+              {tr("Lade …")}
+            </div>{:then module}<module.default />{:catch}<div
+              class="notice error"
+              role="alert"
+            >
+              {tr("Seite konnte nicht geladen werden.")}
+            </div>{/await}
+        {/if}
+      </Tabs.Content>
     {/each}
-  </div>
-  {#if tab === "welt"}
-    <WorldSettings />
-  {:else if tab === "nachrichten"}
-    <MessagesPanel />
-  {:else if tab === "banns"}
-    <BansPanel />
-  {:else}
-    <AuditLog />
-  {/if}
+  </Tabs.Root>
 </div>
 
 <style>
-  .world {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-    max-width: 1000px;
+  :global(.world-content) {
+    margin-top: 24px;
+    outline-offset: 6px;
   }
-  .tabs {
-    display: flex;
-    gap: 6px;
-    flex-wrap: wrap;
-  }
-  .tab {
-    background: var(--panel);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 6px 12px;
-  }
-  .tab.active {
-    border-color: var(--accent);
-    color: var(--accent);
+  @media (max-width: 420px) {
+    :global(.world-content) {
+      margin-top: 16px;
+    }
+    :global(.section-tab svg) {
+      display: none;
+    }
   }
 </style>

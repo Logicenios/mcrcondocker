@@ -40,7 +40,7 @@ function assetSource(index: RenderIndex) {
       if (!files.has(file)) return Promise.resolve(null);
       let result = reads.get(file);
       if (!result) {
-        result = fetch(`/api/render/file?path=${encodeURIComponent(file)}`, { credentials: "same-origin" })
+        result = fetch(`/api/render/file?path=${encodeURIComponent(file)}&v=${encodeURIComponent(index.revision)}`, { credentials: "same-origin" })
           .then(async (response) => response.ok ? new Uint8Array(await response.arrayBuffer()) : null);
         reads.set(file, result);
       }

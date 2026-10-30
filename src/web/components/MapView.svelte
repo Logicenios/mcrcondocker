@@ -1,4 +1,5 @@
 <script lang="ts">
+  import PageHeader from "./ui/PageHeader.svelte";
   import { t as tr } from "../lib/i18n.svelte";
   import { session } from "../lib/session.svelte";
   import BlueMap from "./BlueMap.svelte";
@@ -368,6 +369,7 @@
   }
 </script>
 
+<PageHeader title={tr("Karte")} description={tr("Weltkarte und Spielerpositionen.")} icon="map" />
 <BlueMap />
 
 <div class="map-view">
@@ -388,7 +390,7 @@
       {/each}
     </div>
     <div class="tools">
-      <label class="chk"><input type="checkbox" bind:checked={showOffline} /> Offline</label>
+      <label class="chk"><input type="checkbox" bind:checked={showOffline} /> {tr("Offline")}</label>
       <button class="btn small" onclick={() => zoomAt(1.5, size.w / 2, size.h / 2)} aria-label={tr("Hineinzoomen")}>+</button>
       <button class="btn small" onclick={() => zoomAt(1 / 1.5, size.w / 2, size.h / 2)} aria-label={tr("Herauszoomen")}>−</button>
       <button class="btn small" onclick={fit}>{tr("Einpassen")}</button>
@@ -441,14 +443,14 @@
     {/if}
     <div class="hud mono">
       {#if cursor}X {coord(Math.floor(cursor.x))} · Z {coord(Math.floor(cursor.z))}{:else}{tr("Mitte X")} {coord(Math.round(cx))} · Z {coord(Math.round(cz))}{/if}
-      · {scale >= 1 ? tr("{count} px/Block", { count: Math.round(scale * 10) / 10 }) : tr("1 px = {count} Blöcke", { count: Math.round(1 / scale) })}
+      · {scale >= 1 ? tr("{count} px/Block", { count: coord(scale) }) : tr("1 px = {count} Blöcke", { count: coord(Math.round(1 / scale)) })}
     </div>
     {#if visible.length === 0}
       <div class="empty muted">{tr("Keine Spieler in")} {dimLabel(dim)}.</div>
     {/if}
   </div>
   <div class="legend faint">
-    <span><span class="lg on"></span>online</span>
+    <span><span class="lg on"></span>{tr("Online")}</span>
     <span><span class="lg br"></span>Bedrock</span>
     <span><span class="lg off"></span>{tr("offline (letzte Position)")}</span>
     <span>{tr("Norden ist oben (−Z)")}</span>
@@ -461,9 +463,9 @@
     display: flex;
     flex-direction: column;
     gap: 10px;
-    height: calc(100vh - 150px - var(--safe-bottom));
-    height: calc(100dvh - 150px - var(--safe-bottom));
-    min-height: 360px;
+    height: calc(100vh - 290px - var(--safe-bottom));
+    height: calc(100dvh - 290px - var(--safe-bottom));
+    min-height: 420px;
   }
   .toolbar {
     display: flex;
@@ -501,6 +503,7 @@
     display: flex;
     gap: 6px;
     align-items: center;
+    flex-wrap: wrap;
   }
   .chk {
     display: flex;

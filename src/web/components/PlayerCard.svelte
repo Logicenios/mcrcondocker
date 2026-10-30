@@ -8,7 +8,7 @@
   let { p, active = false, onselect }: { p: PlayerSummary; active?: boolean; onselect: () => void } = $props();
 </script>
 
-<button class="card" class:active class:offline={!p.online} onclick={onselect}>
+<button class="card" aria-pressed={active} class:active class:offline={!p.online} onclick={onselect}>
   <div class="row1">
     <span class="dot" class:on={p.online}></span>
     <span class="name">{p.name}</span>
@@ -24,9 +24,9 @@
   </div>
   <div class="row3 muted">
     {#if p.online}
-      {#if p.health !== null}<span><MinecraftIcon gui="health_full" size={14} /> {Math.round(p.health * 10) / 10}</span>{/if}
-      {#if p.food !== null}<span><MinecraftIcon gui="food_full" size={14} /> {p.food}</span>{/if}
-      {#if p.xpLevel !== null}<span>Lvl {p.xpLevel}</span>{/if}
+      {#if p.health !== null}<span><MinecraftIcon gui="health_full" size={14} /> {coord(p.health)}</span>{/if}
+      {#if p.food !== null}<span><MinecraftIcon gui="food_full" size={14} /> {coord(p.food)}</span>{/if}
+      {#if p.xpLevel !== null}<span>{tr("Stufe {level}", { level: coord(p.xpLevel) })}</span>{/if}
     {:else}
       <span title={dateTime(p.lastSeen)}>{tr("zuletzt gesehen")} {ago(p.lastSeen, live.now)}</span>
     {/if}
@@ -38,18 +38,18 @@
     display: block;
     width: 100%;
     text-align: left;
-    background: var(--panel);
-    border: 1px solid var(--border);
+    background: transparent;
+    border: 1px solid transparent;
     border-radius: var(--radius);
-    padding: 10px 12px;
+    padding: 13px 10px;
     margin: 0 0 8px;
   }
   .card:hover {
     background: var(--panel-2);
   }
   .card.active {
-    border-color: var(--accent);
-    background: #1f2a22;
+    border-color: #78d5a359;
+    background: #78d5a30d;
   }
   .card.offline .name {
     color: var(--text-dim);

@@ -1,5 +1,6 @@
 // Production UI smoke test. Starts an isolated mock server; requires downloaded assets and Chromium.
 import assert from "node:assert/strict";
+import { smokeAdmin } from "./smoke-admin.js";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { existsSync } from "node:fs";
@@ -55,10 +56,26 @@ try {
   const context = await browser.newContext({ locale: "en-GB", viewport: { width: 1440, height: 1000 } });
   const page = await context.newPage();
   const errors: string[] = [];
+  const requests: string[] = [];
+  page.on("request", (request) => requests.push(new URL(request.url()).pathname));
+  const screenshot = async (name: string) => {
+    if (!process.env.SMOKE_ARTIFACT_DIR) return;
+    await mkdir(process.env.SMOKE_ARTIFACT_DIR, { recursive: true });
+    await page.screenshot({ path: path.join(process.env.SMOKE_ARTIFACT_DIR, `${name}.png`), fullPage: true });
+  };
   page.on("pageerror", (e) => errors.push(e.message));
-  page.on("console", (message) => { if (message.type() === "error") errors.push(message.text()); });
+  let checkingConfirmation = false;
+  page.on("console", (message) => {
+    if (message.type() !== "error") return;
+    if (checkingConfirmation && new URL(message.location().url || base).pathname === "/api/action" && message.text().includes("409 (Conflict)")) return;
+    errors.push(message.text());
+  });
   await page.goto(base);
   await page.getByRole("button", { name: "Log in", exact: true }).waitFor();
+  await page.setViewportSize({ width: 375, height: 812 });
+  assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), "Mobile sign-in overflows");
+  await screenshot("login-mobile");
+  await page.setViewportSize({ width: 1440, height: 1000 });
   await page.getByLabel("Language").selectOption("de");
   await page.getByRole("button", { name: "Anmelden", exact: true }).waitFor();
   await page.reload();
@@ -69,6 +86,14 @@ try {
   await page.getByRole("button", { name: "Log in", exact: true }).click();
   await page.locator(".top").waitFor();
   await page.getByRole("link", { name: "Players", exact: true }).waitFor();
+  await page.locator(".card").first().waitFor();
+  assert(!requests.includes("/api/console"), "Console history loaded before opening console");
+  assert(!requests.includes("/api/render/index"), "Renderer index loaded before opening inventory");
+  assert(!requests.includes("/api/translations"), "Game language catalog loaded before opening player details");
+  await page.getByRole("searchbox", { name: "Search players …" }).fill("no-such-player");
+  await page.getByText("No matching players.", { exact: true }).waitFor();
+  await page.getByRole("searchbox", { name: "Search players …" }).fill("");
+  await screenshot("players-desktop");
   await page.goto(`${base}/#/players/36532b5e-c442-3dbb-a24c-c7e55d0f979a`);
   await page.locator(".slot").first().waitFor();
   await page.waitForFunction(() => {
@@ -77,6 +102,23 @@ try {
   });
   await page.waitForFunction(() => document.querySelectorAll('.slot img[data-rendered="true"]').length >= 2, { timeout: 30000 });
   assert.equal(await page.locator(".inv .rows").count(), 3);
+  assert.equal(requests.filter((url) => url === "/api/render/index").length, 1, "Renderer index was requested more than once");
+  assert.equal(await page.getByRole("tab", { name: "Inventory", exact: true }).getAttribute("aria-selected"), "true");
+  assert.equal(await page.locator(".player-actions").count(), 0, "Administrative controls loaded on inventory tab");
+  await screenshot("inventory-desktop");
+  await page.getByRole("tab", { name: "Player data", exact: true }).click();
+  await page.getByRole("link", { name: "View sessions", exact: true }).waitFor();
+  await page.getByRole("tab", { name: "Player data", exact: true }).focus();
+  await page.keyboard.press("ArrowLeft");
+  assert.equal(await page.getByRole("tab", { name: "Inventory", exact: true }).getAttribute("aria-selected"), "true");
+  await page.getByRole("tab", { name: "Actions", exact: true }).click();
+  await page.locator(".player-actions").waitFor();
+  checkingConfirmation = true;
+  await page.getByRole("button", { name: "Clear inventory", exact: true }).click();
+  await page.getByRole("heading", { name: "Confirm action", exact: true }).waitFor();
+  checkingConfirmation = false;
+  await page.getByRole("button", { name: "Cancel", exact: true }).click();
+  await page.getByRole("tab", { name: "Inventory", exact: true }).click();
   await page.getByRole("button", { name: "Shield", exact: true }).waitFor();
   await page.getByRole("button", { name: /Excalibur/ }).click();
   await page.locator(".tt").waitFor();
@@ -84,6 +126,7 @@ try {
   await page.keyboard.press("Escape");
   await page.getByLabel("Language").selectOption("de");
   await page.getByRole("button", { name: "Schild", exact: true }).waitFor();
+  assert.equal(requests.filter((url) => url === "/api/render/index").length, 1, "Changing language restarted renderer/session loading");
   await page.getByRole("button", { name: /Excalibur/ }).click();
   assert.match(await page.locator(".tt").innerText(), /Schärfe/);
   await page.keyboard.press("Escape");
@@ -113,7 +156,10 @@ try {
   await page.getByRole("tab", { name: "Nachrichten", exact: true }).waitFor();
   await page.getByLabel("Sprache").selectOption("en");
   await page.getByRole("tab", { name: "Messages", exact: true }).waitFor();
+  await smokeAdmin(page, context.request, base, screenshot);
   await page.goto(`${base}/#/console`);
+  await page.getByLabel("Command", { exact: true }).waitFor();
+  assert(requests.includes("/api/console"), "Opening console did not load history");
   await page.getByLabel("Command", { exact: true }).fill("stop");
   await page.getByRole("button", { name: "Send", exact: true }).click();
   await page.getByRole("heading", { name: "Confirm command" }).waitFor();
@@ -170,6 +216,28 @@ try {
   await page.goto(`${base}/#/players/36532b5e-c442-3dbb-a24c-c7e55d0f979a`);
   await page.locator(".slot").first().waitFor();
   assert(await page.getByLabel("Language").isVisible());
+  assert.equal(await page.getByRole("navigation", { name: "Mobile navigation", exact: true }).getByRole("link").count(), 3);
+  await screenshot("inventory-mobile");
+  await page.getByLabel("Language").selectOption("de");
+  for (const width of [320, 768, 1024]) {
+    await page.setViewportSize({ width, height: 900 });
+    assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `German player layout overflows at ${width}px`);
+  }
+  await page.setViewportSize({ width: 375, height: 812 });
+  await screenshot("inventory-mobile-de");
+  await page.getByLabel("Sprache").selectOption("en");
+  await page.getByRole("button", { name: "More", exact: true }).click();
+  await page.getByRole("dialog").waitFor();
+  await screenshot("navigation-mobile");
+  await page.keyboard.press("Escape");
+  await page.getByRole("dialog").waitFor({ state: "hidden" });
+  assert(await page.getByRole("button", { name: "More", exact: true }).evaluate((element) => document.activeElement === element), "Mobile menu did not restore keyboard focus");
+  await page.getByRole("button", { name: "More", exact: true }).click();
+  await page.getByRole("dialog").getByRole("link", { name: "Console", exact: true }).click();
+  await page.getByLabel("Command", { exact: true }).waitFor();
+  await page.getByRole("dialog").waitFor({ state: "hidden" });
+  await page.goto(`${base}/#/players/36532b5e-c442-3dbb-a24c-c7e55d0f979a`);
+  await page.locator(".slot").first().waitFor();
   assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), "Mobile inventory overflows the viewport");
   await page.goto(`${base}/#/map`);
   await page.getByRole("button", { name: "Configure BlueMap" }).click();
@@ -189,6 +257,8 @@ try {
   const account = await context.request.post(`${base}/api/users`, { data: { username: "smoke-viewer", password: "viewer-smoke-password", role: "viewer" } }).then((response) => response.json());
   const viewer = await browser.newContext({ locale: "en-GB" });
   const viewerPage = await viewer.newPage();
+  const viewerRequests: string[] = [];
+  viewerPage.on("request", (request) => viewerRequests.push(new URL(request.url()).pathname));
   await viewerPage.goto(base);
   await viewerPage.locator("#username").fill("smoke-viewer");
   await viewerPage.locator("#pw").fill("viewer-smoke-password");
@@ -200,6 +270,8 @@ try {
   await viewerPage.goto(`${base}/#/players/36532b5e-c442-3dbb-a24c-c7e55d0f979a`);
   await viewerPage.locator(".slot").first().waitFor();
   assert.equal(await viewerPage.locator(".player-actions").count(), 0);
+  assert(!viewerRequests.includes("/api/console"), "Viewer requested administrative console history");
+  assert.equal(await viewerPage.getByRole("tab", { name: "Actions", exact: true }).count(), 0);
   await viewerPage.evaluate(() => new Promise<void>((resolve) => {
     const state = window as unknown as { smokeEvents: string[]; smokeSource: EventSource };
     state.smokeEvents = []; state.smokeSource = new EventSource("/api/events");
@@ -215,7 +287,7 @@ try {
   await context.request.post(`${base}/api/pause`, { data: { paused: false } });
   await viewer.close();
   assert.deepEqual(errors, [], "Browser errors");
-  console.log(`Browser smoke passed: language persistence, localized inventory/tooltips, ${allIcons.length} catalog items, rendered icons, BlueMap configuration/embedding, world tabs, command confirmation, mobile layout, component variants, viewer permissions/SSE revocation, and verified backup downloads.`);
+  console.log(`Browser smoke passed: administration workflows, selected-language metadata, command/player/item/history completion without execution, Minecraft/ANSI colors and escaped output, German administration layouts at 320/375px, deferred console/renderer requests, inventory/action tabs, responsive navigation and focus, language persistence, localized inventory/tooltips, ${allIcons.length} catalog items, rendered icons, BlueMap configuration/embedding, world tabs, command confirmation, mobile layout, component variants, viewer permissions/SSE revocation, and verified backup downloads.`);
 } finally {
   await browser?.close();
   server.kill("SIGTERM");

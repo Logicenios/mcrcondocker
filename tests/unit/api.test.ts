@@ -1,5 +1,9 @@
 // Integrationstest: kompletter Stack (Fastify → Poller → RCON-Client → Mock-RCON-Server → MockWorld)
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { RenderAssets } from "../../src/server/render-assets.js";
 import type { FastifyInstance } from "fastify";
 import { ActionService } from "../../src/server/actions.js";
 import { buildApp } from "../../src/server/app.js";
@@ -25,8 +29,20 @@ let poller: Poller;
 let repo: Repo;
 let cookie = "";
 let world: MockWorld;
+let assetsDirectory: string;
+let renderAssets: RenderAssets;
+const png = Buffer.from("89504e470d0a1a0a", "hex");
 
 beforeAll(async () => {
+  assetsDirectory = mkdtempSync(path.join(tmpdir(), "mcdash-api-assets-"));
+  for (const folder of ["icons/minecraft", "gui", "skins", "lang", "assets/minecraft/models/item"]) mkdirSync(path.join(assetsDirectory, folder), { recursive: true });
+  writeFileSync(path.join(assetsDirectory, "icons/minecraft/apple.png"), png);
+  writeFileSync(path.join(assetsDirectory, "gui/food_full.png"), png);
+  writeFileSync(path.join(assetsDirectory, "skins", `${"a".repeat(64)}.png`), png);
+  writeFileSync(path.join(assetsDirectory, "assets/minecraft/models/item/apple.json"), "{}");
+  writeFileSync(path.join(assetsDirectory, "lang/en_us.json"), JSON.stringify({ "item.minecraft.apple": "Apple" }));
+  writeFileSync(path.join(assetsDirectory, "lang/de_de.json"), JSON.stringify({ "item.minecraft.apple": "Apfel", "item.minecraft.shield": "Schild" }));
+  renderAssets = new RenderAssets(assetsDirectory, "/nonexistent");
   world = new MockWorld();
   mock = await startMockRconServer({ password: RCON_PW, handler: (c) => world.handle(c) });
   const config = loadConfig({
@@ -44,7 +60,7 @@ beforeAll(async () => {
   poller = new Poller(rcon, repo, new SessionTracker(repo), diag, { pollIntervalMs: 60_000, perfIntervalMs: 1000, floodgatePrefix: ".", mock: false, version: "test" });
   const actions = new ActionService(rcon, repo, diag, { nameOf: (u) => poller.nameOf(u) });
   const consoleService = new ConsoleService(rcon, diag, [], (cmd, ok, out, actor) => actions.audit("console", cmd, cmd, ok, out, actor));
-  app = await buildApp({ config, repo, poller, console: consoleService, actions, diag, rcon, assets: new Assets("/nonexistent"), version: "test", webRoot: "/nonexistent" });
+  app = await buildApp({ config, repo, poller, console: consoleService, actions, diag, rcon, assets: new Assets(assetsDirectory), renderAssets, version: "test", webRoot: "/nonexistent" });
   rcon.start();
   await rcon.waitForConnected();
   poller.start();
@@ -56,6 +72,8 @@ afterAll(async () => {
   rcon.stop();
   await app.close();
   await mock.close();
+  renderAssets.close();
+  rmSync(assetsDirectory, { recursive: true, force: true });
 });
 
 const json = { "content-type": "application/json" };
@@ -117,8 +135,46 @@ describe("API", () => {
   it("serves language and GUI routes only to authenticated sessions", async () => {
     expect((await app.inject({ url: "/api/translations?lang=en" })).statusCode).toBe(401);
     expect((await app.inject({ url: "/api/gui/food_full" })).statusCode).toBe(401);
-    expect((await app.inject({ url: "/api/translations?lang=en", headers: { cookie } })).json()).toEqual({});
+    expect((await app.inject({ url: "/api/translations?lang=en", headers: { cookie } })).json()).toEqual({ "item.minecraft.apple": "Apple" });
     expect((await app.inject({ url: "/api/gui/not_a_sprite", headers: { cookie } })).statusCode).toBe(404);
+  });
+
+  it("reports the selected catalog in assets, diagnostics and exported metadata", async () => {
+    for (const [locale, language, count] of [["en", "en_us", 1], ["de", "de_de", 2]] as const) {
+      const headers = { cookie, "accept-language": locale };
+      expect((await app.inject({ url: "/api/assets", headers })).json()).toMatchObject({ language, translations: count });
+      expect((await app.inject({ url: "/api/debug", headers })).json().assets).toMatchObject({ language, translations: count });
+      expect((await app.inject({ url: `/api/debug/export?lang=${locale}`, headers: { cookie, "accept-language": "fr" } })).json().assets).toMatchObject({ language, translations: count });
+    }
+    expect((await app.inject({ url: "/api/debug/export?lang=../../secrets", headers: { cookie } })).json().assets.language).toBe("en_us");
+  });
+
+  it("revalidates private icons and caches versioned renderer assets without caching authentication failures", async () => {
+    const model = "/api/render/file?path=assets/minecraft/models/item/apple.json";
+    for (const url of ["/api/icon/minecraft%3Aapple", "/api/gui/food_full", model]) {
+      const first = await app.inject({ url, headers: { cookie } });
+      expect(first.statusCode, url).toBe(200);
+      expect(first.headers["cache-control"], url).toBe("private, no-cache");
+      const etag = first.headers.etag as string;
+      expect(etag).toMatch(/^"[a-f0-9]{64}"$/);
+      const unchanged = await app.inject({ url, headers: { cookie, "if-none-match": etag } });
+      expect(unchanged.statusCode, url).toBe(304);
+      expect(unchanged.body).toBe("");
+      expect(unchanged.headers["cache-control"]).toBe("private, no-cache");
+      expect((await app.inject({ url, headers: { cookie, "if-none-match": `"other", W/${etag}` } })).statusCode).toBe(304);
+      const denied = await app.inject({ url, headers: { "if-none-match": etag } });
+      expect(denied.statusCode).toBe(401);
+      expect(denied.headers["cache-control"]).toBe("no-store");
+    }
+    for (const url of [`${model}&v=${renderAssets.revision}`, `/api/skin/${"a".repeat(64)}`]) {
+      const response = await app.inject({ url, headers: { cookie } });
+      expect(response.statusCode).toBe(200);
+      expect(response.headers["cache-control"]).toBe("private, max-age=86400");
+    }
+    for (const url of ["/api/status", "/api/render/index", "/api/assets", "/api/icon/missing:apple"]) {
+      expect((await app.inject({ url, headers: { cookie } })).headers["cache-control"]).toBe("no-store");
+    }
+    expect((await app.inject({ url: `${model}&v=old-revision`, headers: { cookie } })).headers["cache-control"]).toBe("private, no-cache");
   });
 
   it("enforces viewer permissions on every administration API and revokes changed accounts", async () => {

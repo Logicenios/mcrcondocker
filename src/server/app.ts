@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 // HTTP-Server: REST-API, Server-Sent Events, statisches Frontend.
 import { resolveLocale, translate } from "../shared/translations.js";
 import { normalizeBlueMapUrl } from "../shared/bluemap.js";
@@ -59,17 +60,23 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   });
   app.decorateRequest("user", null);
   const renderAssets = deps.renderAssets;
+  const assetResponse = (req: FastifyRequest, reply: FastifyReply, content: Buffer, type: string, versioned = false) => {
+    const etag = `"${createHash("sha256").update(content).digest("hex")}"`;
+    reply.type(type).header("ETag", etag).header("Cache-Control", versioned ? "private, max-age=86400" : "private, no-cache");
+    if (req.headers["if-none-match"]?.split(",").some((value) => value.trim() === "*" || value.trim().replace(/^W\//, "") === etag)) return reply.code(304).send();
+    return reply.send(content);
+  };
   app.get("/api/render/index", async () => renderAssets?.info() ?? { enabled: false, version: "26.3", revision: "none", files: [], custom: false, skins: [] });
-  app.get<{ Querystring: { path?: string } }>("/api/render/file", async (req, reply) => {
+  app.get<{ Querystring: { path?: string; v?: string } }>("/api/render/file", async (req, reply) => {
     const file = typeof req.query.path === "string" ? req.query.path : "";
     const content = renderAssets?.read(file);
     if (!content) return reply.code(404).send({ error: "Render asset not found" });
-    return reply.type(file.endsWith(".png") ? "image/png" : "application/json").send(content);
+    return assetResponse(req, reply, content, file.endsWith(".png") ? "image/png" : "application/json", req.query.v === renderAssets?.revision);
   });
   app.get<{ Params: { hash: string } }>("/api/skin/:hash", async (req, reply) => {
     const skin = renderAssets?.skin(req.params.hash);
     if (!skin) return reply.code(404).send({ error: "Skin not installed" });
-    return reply.type("image/png").send(skin);
+    return assetResponse(req, reply, skin, "image/png", true);
   });
   const auth = new Auth(config.dashboardPassword, repo, config.sessionDays);
   const isSecure = (req: FastifyRequest) => (config.cookieSecure === "auto" ? req.protocol === "https" : config.cookieSecure);
@@ -88,7 +95,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
       "Content-Security-Policy",
       `default-src 'self'; frame-src ${frameOrigin}; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self' 'wasm-unsafe-eval'; connect-src 'self'; frame-ancestors ${isMapFrame ? "'self'" : "'none'"}; base-uri 'self'; form-action 'self'; manifest-src 'self'; worker-src 'self'`,
     );
-    if (req.url.startsWith("/api/")) reply.header("Cache-Control", "no-store");
+    if (req.url.startsWith("/api/") && (reply.statusCode >= 400 || !reply.hasHeader("Cache-Control"))) reply.header("Cache-Control", "no-store");
     return payload;
   });
 
@@ -316,7 +323,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   app.get<{ Params: { name: string } }>("/api/gui/:name", async (req, reply) => {
     const png = assets.gui(req.params.name);
     if (!png) return reply.code(404).send({ error: "No GUI sprite" });
-    return reply.type("image/png").header("Cache-Control", "private, max-age=86400").send(png);
+    return assetResponse(req, reply, png, "image/png");
   });
 
   app.get<{ Querystring: { limit?: string; before?: string } }>("/api/audit", async (req) => {
@@ -333,11 +340,11 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     startedAt: diag.startedAt,
     version: deps.version,
   });
-  app.get("/api/debug", async () => ({ ...diagSnapshot(), assets: assets.info(), status: poller.status() }));
-  app.get("/api/debug/export", async (_req, reply) => {
+  app.get("/api/debug", async (req) => ({ ...diagSnapshot(), assets: assets.info(resolveLocale(req.headers["accept-language"])), status: poller.status() }));
+  app.get<{ Querystring: { lang?: string } }>("/api/debug/export", async (req, reply) => {
     reply.header("Content-Disposition", `attachment; filename="mcdash-debug-${new Date().toISOString().slice(0, 19).replace(/:/g, "-")}.json"`);
     // letzte Aktionen mit Serverantwort, damit fehlgeschlagene Aktionen im Export sichtbar sind
-    return { ...diagSnapshot(), assets: assets.info(), status: poller.status(), audit: actions.auditEntries(100), exportedAt: new Date().toISOString() };
+    return { ...diagSnapshot(), assets: assets.info(resolveLocale(req.query.lang ?? req.headers["accept-language"])), status: poller.status(), audit: actions.auditEntries(100), exportedAt: new Date().toISOString() };
   });
   app.post("/api/debug/clear-warnings", async () => {
     diag.clearWarnings();
@@ -345,13 +352,11 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   });
 
   // --- Texturen ------------------------------------------------------------
-  app.get("/api/assets", async () => assets.info());
+  app.get("/api/assets", async (req) => assets.info(resolveLocale(req.headers["accept-language"])));
   app.get<{ Params: { id: string } }>("/api/icon/:id", async (req, reply) => {
     const png = assets.icon(req.params.id.replace(/\.png$/, ""));
     if (!png) return reply.code(404).send({ error: "keine Textur" });
-    reply.header("Content-Type", "image/png");
-    reply.header("Cache-Control", "private, max-age=86400");
-    return png;
+    return assetResponse(req, reply, png, "image/png");
   });
 
   // --- Live-Ereignisse (SSE) ----------------------------------------------

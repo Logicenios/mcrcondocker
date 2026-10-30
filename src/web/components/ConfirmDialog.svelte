@@ -18,6 +18,7 @@
     oncancel: () => void;
   } = $props();
 
+  const id = $props.id();
   let dlg = $state<HTMLDialogElement | undefined>();
   $effect(() => {
     if (!dlg) return;
@@ -26,9 +27,9 @@
   });
 </script>
 
-<dialog bind:this={dlg} oncancel={(e) => { e.preventDefault(); oncancel(); }}>
-  <h2>{title}</h2>
-  <p>{message}</p>
+<dialog aria-labelledby={`${id}-title`} aria-describedby={`${id}-message`} bind:this={dlg} oncancel={(e) => { e.preventDefault(); oncancel(); }}>
+  <h2 id={`${id}-title`}>{title}</h2>
+  <p id={`${id}-message`}>{message}</p>
   {#if detail}<pre class="mono">{detail}</pre>{/if}
   <div class="actions">
     <button class="btn" onclick={oncancel}>{tr("Abbrechen")}</button>

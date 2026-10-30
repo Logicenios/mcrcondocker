@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { onMount } from "svelte";
+  onMount(() => { void live.loadRenderer(); });
   import type { Item } from "../../shared/types";
   import { live } from "../lib/live.svelte";
   import { needsRendering, renderIcon } from "../lib/rendering";

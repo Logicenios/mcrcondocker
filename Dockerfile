@@ -5,6 +5,15 @@
 
 ARG NODE_VERSION=24
 
+# --- Asset downloads depend only on the installer and ZIP reader -------------
+FROM --platform=$BUILDPLATFORM node:${NODE_VERSION}-alpine AS assets
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci --no-audit --no-fund
+COPY scripts/download-assets.ts scripts/download-models.ts ./scripts/
+COPY src/server/zip.ts ./src/server/
+RUN npm run assets:download && npm run assets:models
+
 # --- 1) Frontend + Backend bauen -------------------------------------------
 FROM --platform=$BUILDPLATFORM node:${NODE_VERSION}-alpine AS build
 WORKDIR /app
@@ -12,8 +21,6 @@ COPY package.json package-lock.json ./
 RUN npm ci --no-audit --no-fund
 COPY tsconfig.server.json tsconfig.web.json vite.config.ts ./
 COPY src ./src
-COPY scripts/download-assets.ts scripts/download-models.ts ./scripts/
-RUN npm run assets:download && npm run assets:models
 RUN npm run build
 
 # --- 2) nur Laufzeit-Abhängigkeiten --------------------------------------------
@@ -38,7 +45,7 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/THIRD-PARTY-LICENSES.md ./
 COPY LICENSE ./
 COPY --from=build /app/dist ./dist
-COPY --from=build /app/game-assets ./game-assets
+COPY --from=assets /app/game-assets ./game-assets
 COPY package.json ./
 COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh

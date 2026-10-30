@@ -1,14 +1,26 @@
 <script lang="ts">
+  import { onMount } from "svelte";
+  import Panel from "../ui/Panel.svelte";
+  import Button from "../ui/Button.svelte";
+  import Icon from "../ui/Icon.svelte";
+  import { coord } from "../../lib/format";
   import { t as tr } from "../../lib/i18n.svelte";
   import { GAMERULES } from "../../../shared/gamerules";
-  import type { Difficulty, GameruleState, TimePreset, WeatherKind, WorldState } from "../../../shared/types";
+  import type {
+    Difficulty,
+    GameruleState,
+    TimePreset,
+    WeatherKind,
+    WorldState,
+  } from "../../../shared/types";
   import { actions } from "../../lib/actions.svelte";
   import { api } from "../../lib/api";
 
   let world = $state<WorldState | null>(null);
+  let search = $state("");
   let error = $state<string | null>(null);
   let loading = $state(false);
-  let numbers = $state<Record<string, string>>({});
+  let numbers = $state<Record<string, string | number>>({});
   let spawn = $state({ x: "", y: "", z: "" });
 
   const busy = $derived(actions.busy > 0 || loading);
@@ -18,9 +30,15 @@
     try {
       world = await api.world();
       error = null;
-      numbers = Object.fromEntries(world.gamerules.filter((g) => typeof g.value === "number").map((g) => [g.key, String(g.value)]));
+      numbers = Object.fromEntries(
+        world.gamerules
+          .filter((g) => typeof g.value === "number")
+          .map((g) => [g.key, String(g.value)]),
+      );
       const s = world.worldSpawn;
-      spawn = s ? { x: String(s.x), y: String(s.y), z: String(s.z) } : { x: "", y: "", z: "" };
+      spawn = s
+        ? { x: String(s.x), y: String(s.y), z: String(s.z) }
+        : { x: "", y: "", z: "" };
     } catch (e) {
       error = (e as Error).message;
     } finally {
@@ -28,7 +46,7 @@
     }
   }
 
-  $effect(() => {
+  onMount(() => {
     void load();
   });
 
@@ -69,224 +87,390 @@
   const listed = $derived(
     GAMERULES.filter((d) => !SPECIAL.has(d.key))
       .map((d) => ({ def: d, state: rule(d.key) }))
-      .filter((r): r is { def: (typeof GAMERULES)[number]; state: GameruleState } => !!r.state),
+      .filter(
+        (r): r is { def: (typeof GAMERULES)[number]; state: GameruleState } =>
+          !!r.state,
+      ),
   );
-  const missing = $derived(world ? GAMERULES.filter((d) => !rule(d.key)).map((d) => d.label) : []);
+  const filtered = $derived(
+    listed.filter(({ def, state }) =>
+      `${tr(def.label)} ${tr(def.hint)} ${state.name}`
+        .toLowerCase()
+        .includes(search.trim().toLowerCase()),
+    ),
+  );
+  const missing = $derived(
+    world ? GAMERULES.filter((d) => !rule(d.key)).map((d) => d.label) : [],
+  );
 
   const num = (s: string) => Number(s.replace(",", "."));
-  const spawnValid = $derived([spawn.x, spawn.y, spawn.z].every((v) => v.trim() !== "" && Number.isFinite(num(v))));
+  const spawnValid = $derived(
+    [spawn.x, spawn.y, spawn.z].every(
+      (v) => v.trim() !== "" && Number.isFinite(num(v)),
+    ),
+  );
 
   async function saveSpawn(clear = false) {
+    if (loading || actions.busy) return;
+    loading = true;
     try {
-      const r = await api.setWorldSpawn(clear ? null : { x: num(spawn.x), y: num(spawn.y), z: num(spawn.z) });
+      const r = await api.setWorldSpawn(
+        clear ? null : { x: num(spawn.x), y: num(spawn.y), z: num(spawn.z) },
+      );
       if (world) world.worldSpawn = r.worldSpawn;
-      actions.toast(true, clear ? tr("Weltspawn entfernt") : tr("Weltspawn gespeichert"));
+      actions.toast(
+        true,
+        clear ? tr("Weltspawn entfernt") : tr("Weltspawn gespeichert"),
+      );
     } catch (e) {
-      actions.toast(false, tr("Speichern fehlgeschlagen"), (e as Error).message);
+      actions.toast(
+        false,
+        tr("Speichern fehlgeschlagen"),
+        (e as Error).message,
+      );
+    } finally {
+      loading = false;
     }
   }
 </script>
 
-{#if error}
-  <div class="panel err">
-    {tr("Weltdaten konnten nicht gelesen werden:")} {error}
-    <button class="btn small" onclick={load}>{tr("Erneut versuchen")}</button>
-  </div>
-{/if}
-
-{#snippet toggle(key: string)}
-  {@const g = rule(key)}
-  {#if g && typeof g.value === "boolean"}
-    <label class="sw">
-      <input type="checkbox" checked={g.value} disabled={busy} onchange={(e) => {
-        const v = (e.currentTarget as HTMLInputElement).checked;
-        (e.currentTarget as HTMLInputElement).checked = g.value as boolean;
-        void run({ type: "gamerule", rule: g.name, value: v });
-      }} />
-      <span>{tr(GAMERULES.find((d) => d.key === key)?.label)}</span>
-    </label>
-  {/if}
-{/snippet}
-
-<div class="grid">
-  <section class="panel">
-    <div class="head">
-      <h3>{tr("Uhrzeit")}</h3>
-      <button class="btn small" onclick={load} disabled={loading}>{loading ? tr("Lade …") : tr("Aktualisieren")}</button>
-    </div>
-    <div class="big">
-      {#if world?.daytime != null}
-        {clock(world.daytime)} {tr("Uhr")}
-        {#if world.day != null}<span class="faint">{tr("· Tag")} {world.day + 1}</span>{/if}
-      {:else}
-        <span class="faint">–</span>
-      {/if}
-    </div>
-    <div class="row">
-      {#each times as t (t.id)}
-        <button class="btn small" disabled={busy} onclick={() => run({ type: "time", preset: t.id })}>{t.icon} {tr(t.label)}</button>
-      {/each}
-    </div>
-    <div class="row">{@render toggle("doDaylightCycle")}</div>
-  </section>
-
-  <section class="panel">
-    <h3>{tr("Wetter")}</h3>
-    <div class="row">
-      {#each weathers as w (w.id)}
-        <button class="btn small" class:primary={world?.weather === w.id} disabled={busy} onclick={() => run({ type: "weather", weather: w.id })}>
-          {w.icon} {tr(w.label)}
-        </button>
-      {/each}
-    </div>
-    {#if world && world.weather === null}<div class="faint small">{tr("Aktuelles Wetter konnte nicht gelesen werden.")}</div>{/if}
-    <div class="row">{@render toggle("doWeatherCycle")}</div>
-  </section>
-
-  <section class="panel">
-    <h3>{tr("Schwierigkeit")}</h3>
-    <div class="row">
-      {#each difficulties as d (d.id)}
-        <button
-          class="btn small"
-          class:primary={world?.difficulty === d.id}
-          disabled={busy || world?.difficulty === d.id}
-          onclick={() => run({ type: "difficulty", difficulty: d.id })}
+<div class="page-stack">
+  {#if error}<div class="notice error" role="alert">
+      {tr("Weltdaten konnten nicht gelesen werden:")}
+      {error}
+      <Button size="sm" variant="outline" onclick={load}
+        >{tr("Erneut versuchen")}</Button
+      >
+    </div>{/if}
+  {#snippet toggle(key: string)}
+    {@const g = rule(key)}
+    {#if g && typeof g.value === "boolean"}
+      <label class="switch-label"
+        ><input
+          type="checkbox"
+          role="switch"
+          checked={g.value}
+          disabled={busy}
+          onchange={(e) => {
+            const value = e.currentTarget.checked;
+            e.currentTarget.checked = g.value as boolean;
+            void run({ type: "gamerule", rule: g.name, value });
+          }}
+        /><span>{tr(GAMERULES.find((d) => d.key === key)?.label)}</span></label
+      >
+    {/if}
+  {/snippet}
+  <div class="settings-grid">
+    <Panel
+      title={tr("Uhrzeit")}
+      description={tr("Tageszeit und Tageszyklus festlegen.")}
+      icon="sun"
+    >
+      {#snippet actions()}<Button
+          variant="ghost"
+          size="sm"
+          onclick={load}
+          disabled={loading}
+          aria-label={tr("Weltdaten aktualisieren")}
+          ><Icon name="refresh" size={16} />{tr("Aktualisieren")}</Button
+        >{/snippet}
+      <div class="world-clock">
+        {world?.daytime != null ? clock(world.daytime) : "–"}<span
+          >{world?.day != null
+            ? `${tr("· Tag")} ${coord(world.day + 1)}`
+            : ""}</span
         >
-          {tr(d.label)}
-        </button>
-      {/each}
+      </div>
+      <div class="presets">
+        {#each times as preset (preset.id)}<Button
+            variant="secondary"
+            size="sm"
+            disabled={busy || !world}
+            onclick={() => run({ type: "time", preset: preset.id })}
+            >{tr(preset.label)}</Button
+          >{/each}
+      </div>
+      <div class="setting-footer">{@render toggle("doDaylightCycle")}</div>
+    </Panel>
+    <Panel
+      title={tr("Wetter")}
+      description={tr("Wetter und automatischen Wetterwechsel steuern.")}
+      icon="world"
+    >
+      <div class="current-value">
+        {world?.weather
+          ? tr(weathers.find((w) => w.id === world?.weather)?.label)
+          : tr("unbekannt")}
+      </div>
+      <div class="presets">
+        {#each weathers as weather (weather.id)}<Button
+            variant={world?.weather === weather.id ? "default" : "secondary"}
+            size="sm"
+            aria-pressed={world?.weather === weather.id}
+            disabled={busy || !world}
+            onclick={() => run({ type: "weather", weather: weather.id })}
+            >{tr(weather.label)}</Button
+          >{/each}
+      </div>
+      {#if world && world.weather === null}<p class="help-text">
+          {tr("Aktuelles Wetter konnte nicht gelesen werden.")}
+        </p>{/if}
+      <div class="setting-footer">{@render toggle("doWeatherCycle")}</div>
+    </Panel>
+    <Panel
+      title={tr("Schwierigkeit")}
+      description={tr("Die Schwierigkeit gilt für alle Spieler.")}
+      icon="users"
+    >
+      <div class="presets">
+        {#each difficulties as difficulty (difficulty.id)}<Button
+            variant={world?.difficulty === difficulty.id
+              ? "default"
+              : "secondary"}
+            size="sm"
+            aria-pressed={world?.difficulty === difficulty.id}
+            disabled={busy || !world || world.difficulty === difficulty.id}
+            onclick={() =>
+              run({ type: "difficulty", difficulty: difficulty.id })}
+            >{tr(difficulty.label)}</Button
+          >{/each}
+      </div>
+    </Panel>
+    <Panel
+      title={tr("Weltspawn")}
+      description={tr(
+        "Lässt sich über RCON nicht auslesen. Hier hinterlegt, erscheint auf jeder Spielerseite „Zum Weltspawn“.",
+      )}
+      icon="map"
+    >
+      <form
+        onsubmit={(event) => {
+          event.preventDefault();
+          if (spawnValid) void saveSpawn();
+        }}
+      >
+        <div class="coordinates">
+          {#each ["x", "y", "z"] as axis}<label class="field"
+              >{axis.toUpperCase()}<input
+                inputmode="decimal"
+                aria-label={axis.toUpperCase()}
+                bind:value={spawn[axis as keyof typeof spawn]}
+              /></label
+            >{/each}
+        </div>
+        <div class="presets">
+          <Button type="submit" size="sm" disabled={busy || !spawnValid}
+            >{tr("Speichern")}</Button
+          >{#if world?.worldSpawn}<Button
+              variant="outline"
+              size="sm"
+              disabled={busy}
+              onclick={() => saveSpawn(true)}>{tr("Entfernen")}</Button
+            >{/if}
+        </div>
+      </form>
+    </Panel>
+  </div>
+  <Panel
+    title={tr("Spielregeln")}
+    description={tr(
+      "Regeln für Spieler und Welt. Änderungen werden im Protokoll erfasst.",
+    )}
+    icon="inventory"
+  >
+    {#snippet actions()}<span class="badge"
+        >{coord(filtered.length)} / {coord(listed.length)}</span
+      >{/snippet}
+    <label class="inline-search"
+      ><Icon name="search" size={17} /><input
+        type="search"
+        aria-label={tr("Spielregeln suchen")}
+        placeholder={tr("Spielregeln suchen")}
+        bind:value={search}
+      /></label
+    >
+    {#if !world && !error}<p class="muted" role="status">{tr("Lade …")}</p>{/if}
+    <div class="rules">
+      {#each filtered as { def, state } (def.key)}
+        <div class="rule">
+          <div class="rule-label">
+            <strong>{tr(def.label)}</strong>{#if def.hint}<p>
+                {tr(def.hint)}
+              </p>{/if}<code>{state.name}</code>
+          </div>
+          {#if typeof state.value === "boolean"}
+            <label class="switch-label"
+              ><input
+                type="checkbox"
+                role="switch"
+                aria-label={tr(def.label)}
+                checked={state.value}
+                disabled={busy}
+                onchange={(event) => {
+                  const value = event.currentTarget.checked;
+                  event.currentTarget.checked = state.value as boolean;
+                  void run({ type: "gamerule", rule: state.name, value });
+                }}
+              /><span class="switch-value"
+                >{state.value ? tr("an") : tr("aus")}</span
+              ></label
+            >
+          {:else}
+            <form
+              class="rule-number"
+              onsubmit={(event) => {
+                event.preventDefault();
+                const value = Number(numbers[def.key]);
+                if (
+                  String(numbers[def.key] ?? "").trim() &&
+                  Number.isInteger(value)
+                )
+                  void run({ type: "gamerule", rule: state.name, value });
+              }}
+            >
+              <input
+                type="number"
+                bind:value={numbers[def.key]}
+                aria-label={tr(def.label)}
+              /><Button
+                size="sm"
+                variant="outline"
+                type="submit"
+                disabled={busy ||
+                  !String(numbers[def.key] ?? "").trim() ||
+                  !Number.isInteger(Number(numbers[def.key])) ||
+                  Number(numbers[def.key]) === state.value}
+                >{tr("Setzen")}</Button
+              >
+            </form>
+          {/if}
+        </div>
+      {:else}{#if world}<p class="muted">
+            {tr("Keine passenden Spielregeln.")}
+          </p>{/if}{/each}
     </div>
-  </section>
-
-  <section class="panel">
-    <h3>{tr("Weltspawn")}</h3>
-    <p class="faint small">
-      {tr("Lässt sich über RCON nicht auslesen. Hier hinterlegt, erscheint auf jeder Spielerseite „Zum Weltspawn“.")}
-    </p>
-    <form class="row" onsubmit={(e) => { e.preventDefault(); if (spawnValid) void saveSpawn(); }}>
-      <input class="c" inputmode="decimal" placeholder="X" aria-label="X" bind:value={spawn.x} />
-      <input class="c" inputmode="decimal" placeholder="Y" aria-label="Y" bind:value={spawn.y} />
-      <input class="c" inputmode="decimal" placeholder="Z" aria-label="Z" bind:value={spawn.z} />
-      <button class="btn small" type="submit" disabled={!spawnValid}>{tr("Speichern")}</button>
-      {#if world?.worldSpawn}<button class="btn small" type="button" onclick={() => saveSpawn(true)}>{tr("Entfernen")}</button>{/if}
-    </form>
-  </section>
+    {#if missing.length}<details class="unsupported">
+        <summary
+          >{tr("Nicht unterstützte Regeln")}
+          <span class="badge">{coord(missing.length)}</span></summary
+        >
+        <p class="help-text">
+          {tr("Vom Server nicht unterstützt:")}
+          {missing.map((label) => tr(label)).join(", ")}
+        </p>
+      </details>{/if}
+  </Panel>
 </div>
 
-<section class="panel">
-  <h3>Gamerules</h3>
-  {#if !world && !error}
-    <div class="faint">{tr("Lade …")}</div>
-  {/if}
-  <div class="rules">
-    {#each listed as { def, state } (def.key)}
-      <div class="rule">
-        <div class="lbl">
-          <div>{tr(def.label)}</div>
-          <div class="faint small">{tr(def.hint)} <span class="mono">{state.name}</span></div>
-        </div>
-        {#if typeof state.value === "boolean"}
-          <label class="sw">
-            <input type="checkbox" checked={state.value} disabled={busy} onchange={(e) => {
-              const v = (e.currentTarget as HTMLInputElement).checked;
-              (e.currentTarget as HTMLInputElement).checked = state.value as boolean;
-              void run({ type: "gamerule", rule: state.name, value: v });
-            }} />
-            <span>{state.value ? tr("an") : tr("aus")}</span>
-          </label>
-        {:else}
-          <form class="row" onsubmit={(e) => {
-            e.preventDefault();
-            const v = Number(numbers[def.key]);
-            if (Number.isInteger(v)) void run({ type: "gamerule", rule: state.name, value: v });
-          }}>
-            <input class="c" type="number" bind:value={numbers[def.key]} aria-label={tr(def.label)} />
-            <button class="btn small" type="submit" disabled={busy || Number(numbers[def.key]) === state.value}>{tr("Setzen")}</button>
-          </form>
-        {/if}
-      </div>
-    {/each}
-  </div>
-  {#if missing.length}
-    <div class="faint small">{tr("Vom Server nicht unterstützt:")} {missing.map((label) => tr(label)).join(", ")}</div>
-  {/if}
-</section>
-
 <style>
-  .grid {
+  .settings-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-    gap: 12px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 20px;
   }
-  section {
+  .world-clock {
+    font-size: 34px;
+    font-weight: 650;
+    letter-spacing: -0.04em;
+    font-variant-numeric: tabular-nums;
+    margin-bottom: 18px;
+  }
+  .world-clock span {
+    font-size: 13px;
+    margin-left: 12px;
+    color: var(--text-dim);
+    letter-spacing: 0;
+    font-weight: 400;
+  }
+  .current-value {
+    font-size: 28px;
+    font-weight: 650;
+    margin-bottom: 20px;
+  }
+  .presets {
     display: flex;
-    flex-direction: column;
     gap: 8px;
-  }
-  h3 {
-    margin: 0;
-  }
-  .head {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-  }
-  .big {
-    font-size: 22px;
-    font-weight: 600;
-  }
-  .row {
-    display: flex;
     flex-wrap: wrap;
-    gap: 6px;
-    align-items: center;
   }
-  .small {
-    font-size: 12px;
-    margin: 0;
+  .setting-footer {
+    border-top: 1px solid var(--border);
+    margin-top: 20px;
+    padding-top: 16px;
   }
-  .c {
-    width: 90px;
-    padding: 4px 8px;
+  .coordinates {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+    margin-bottom: 14px;
   }
   .rules {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-    gap: 4px 18px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: 32px;
+    margin-top: 14px;
   }
   .rule {
     display: flex;
-    justify-content: space-between;
     align-items: center;
-    gap: 10px;
-    padding: 6px 0;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 18px 0;
     border-bottom: 1px solid var(--border);
   }
-  .lbl {
+  .rule-label {
     min-width: 0;
     overflow-wrap: anywhere;
+    font-size: 13px;
   }
-  .rule form {
+  .rule-label p {
+    color: var(--text-dim);
+    margin: 5px 0;
+    font-size: 12px;
+    line-height: 1.5;
+  }
+  .rule-label code {
+    display: block;
+    margin-top: 5px;
+    font-size: 10px;
+    color: var(--text-faint);
+    overflow-wrap: anywhere;
+  }
+  .rule-number {
+    display: flex;
+    align-items: center;
     flex: none;
-    flex-wrap: nowrap;
-  }
-  .sw {
-    display: flex;
-    align-items: center;
     gap: 6px;
-    white-space: nowrap;
   }
-  .sw input {
-    width: 18px;
-    height: 18px;
+  .rule-number input {
+    width: 70px;
+    min-width: 0;
   }
-  .panel.err {
-    border-color: var(--error);
-    color: var(--error);
-    display: flex;
-    gap: 10px;
-    align-items: center;
-    flex-wrap: wrap;
+  .unsupported {
+    margin-top: 18px;
+    color: var(--text-dim);
+    font-size: 13px;
+  }
+  summary {
+    cursor: pointer;
+  }
+  @media (max-width: 1200px) {
+    .rules {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+  @media (max-width: 650px) {
+    .settings-grid {
+      grid-template-columns: minmax(0, 1fr);
+      gap: 16px;
+    }
+  }
+  @media (max-width: 380px) {
+    .rule-number {
+      flex-direction: column;
+      align-items: stretch;
+    }
+    .switch-value {
+      display: none;
+    }
   }
 </style>

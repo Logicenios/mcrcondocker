@@ -30,6 +30,7 @@ export class Assets {
   private folders: string[] = [];
   private rendered: string[] = [];
   private roots: string[];
+  private languageSources = new Map<string, string | null>();
   private languages = new Map<string, Record<string, string>>();
   private jar: ZipReader | null = null;
   private cache = new Map<string, Buffer | null>();
@@ -99,12 +100,14 @@ export class Assets {
     }
   }
 
-  info(): AssetsInfo {
+  info(locale?: string): AssetsInfo {
+    const catalog = locale === undefined ? this.lang : this.translations(locale);
+    const language = locale === undefined ? this.langName : this.languageSources.get(locale === "de" ? "de_de" : "en_us") ?? null;
     return {
       textures: this.rendered.length ? "rendered" : this.folders.length ? "folder" : this.jar ? "jar" : null,
       textureSource: this.rendered[0] ? "icons" : this.folders[0] ? path.relative(this.dir, this.folders[0]) || "." : this.jar ? path.basename(this.jar.file) : null,
-      language: this.langName,
-      translations: Object.keys(this.lang).length,
+      language,
+      translations: Object.keys(catalog).length,
     };
   }
 
@@ -124,10 +127,16 @@ export class Assets {
           }
         } catch { /* Try the next source. */ }
       }
-      try { return JSON.parse(this.jar?.get(`assets/minecraft/lang/${name}.json`)?.toString("utf8") ?? "{}"); }
-      catch { return {}; }
+      try {
+        const data: unknown = JSON.parse(this.jar?.get(`assets/minecraft/lang/${name}.json`)?.toString("utf8") ?? "{}");
+        return data && typeof data === "object" && !Array.isArray(data)
+          ? Object.fromEntries(Object.entries(data).filter((entry): entry is [string, string] => typeof entry[1] === "string")) : {};
+      } catch { return {}; }
     };
-    const result = { ...read("en_us"), ...read(language) };
+    const english = read("en_us");
+    const requested = language === "en_us" ? english : read(language);
+    const result = { ...english, ...requested };
+    this.languageSources.set(language, Object.keys(requested).length ? language : Object.keys(english).length ? "en_us" : null);
     this.languages.set(language, result);
     return result;
   }

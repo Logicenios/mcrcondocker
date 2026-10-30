@@ -12,7 +12,7 @@ export class RenderAssets {
   private zips: ZipReader[] = [];
   private version: string;
   private custom = false;
-  private revision: string;
+  readonly revision: string;
   constructor(private readonly userDir: string, bundledDir: string, version = "26.3") {
     this.version = version;
     const sources: string[] = [];

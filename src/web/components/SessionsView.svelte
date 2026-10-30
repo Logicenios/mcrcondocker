@@ -1,8 +1,9 @@
 <script lang="ts">
+  import PageHeader from "./ui/PageHeader.svelte";
   import { t as tr } from "../lib/i18n.svelte";
   import type { GapEntry, PlayerSessionStats, SessionEntry } from "../../shared/types";
   import { api } from "../lib/api";
-  import { ago, dateTime, duration, shortDate } from "../lib/format";
+  import { ago, coord, dateTime, duration, shortDate } from "../lib/format";
   import { live } from "../lib/live.svelte";
   import { router } from "../lib/router.svelte";
 
@@ -54,25 +55,26 @@
   }
 </script>
 
-{#if error}<div class="panel err">{error}</div>{/if}
+<PageHeader title={tr("Online-Zeiten")} description={tr("Spielzeit und letzte Besuche deiner Spieler.")} icon="sessions" />
+{#if error}<div class="notice error" role="alert">{error} <button class="btn small" onclick={load}>{tr("Erneut versuchen")}</button></div>{/if}
 
 <div class="wrap">
-  <section class="panel">
+  <section class="panel surface">
     <div class="head">
-      <h2>{tr("Online-Zeiten")}</h2>
+      <h2>{tr("Spieleraktivität")}</h2>
       <label class="muted small">
         {tr("Sortierung")}
         <select bind:value={sort}>
           <option value="total">{tr("Gesamtzeit")}</option>
           <option value="last">{tr("Zuletzt gesehen")}</option>
-          <option value="name">Name</option>
+          <option value="name">{tr("Name")}</option>
         </select>
       </label>
     </div>
     <div class="scroll-x">
       <table>
         <thead>
-          <tr><th>{tr("Spieler")}</th><th>{tr("Gesamt")}</th><th>Sessions</th><th>{tr("Zuletzt gesehen")}</th></tr>
+          <tr><th>{tr("Spieler")}</th><th>{tr("Gesamt")}</th><th>{tr("Sessions")}</th><th>{tr("Zuletzt gesehen")}</th></tr>
         </thead>
         <tbody>
           {#each sorted as s (s.uuid)}
@@ -83,7 +85,7 @@
                 {#if s.isBedrock}<span class="badge bedrock">Bedrock</span>{/if}
               </td>
               <td class="num">{duration(s.totalMs)}</td>
-              <td class="num">{s.sessionCount}</td>
+              <td class="num">{coord(s.sessionCount)}</td>
               <td title={dateTime(s.lastSeen)}>{s.online ? tr("jetzt online") : ago(s.lastSeen, live.now)}</td>
             </tr>
           {/each}
@@ -96,7 +98,7 @@
   </section>
 
   {#if selected && sessions}
-    <section class="panel">
+    <section class="panel surface">
       <div class="head">
         <h2>{selectedStats?.name ?? tr("Spieler")} {tr("– letzte Sessions")}</h2>
         <a class="btn small" href="#/players/{selected}">{tr("Spieler ansehen")}</a>
@@ -115,9 +117,9 @@
                   <td class="num">{duration((s.end ?? live.now) - s.start)}</td>
                   <td>
                     {#if s.end === null}
-                      <span class="badge" style="color: var(--accent)">online</span>
+                      <span class="badge" style="color: var(--accent)">{tr("Online")}</span>
                     {:else if s.endReason === "logout"}
-                      Logout
+                      {tr("Abmeldung")}
                     {:else}
                       <span class="unknown">{tr("unbekannt")}</span>
                       {#if gapAfter(s)}<span class="faint">({tr(REASON[gapAfter(s)!.reason])})</span>{/if}
@@ -132,7 +134,7 @@
     </section>
   {/if}
 
-  <section class="panel">
+  <section class="panel surface">
     <h2>{tr("Lücken in der Erfassung (30 Tage)")}</h2>
     {#if gaps.length === 0}
       <div class="muted">{tr("Keine Lücken.")}</div>
@@ -160,7 +162,7 @@
   .wrap {
     display: flex;
     flex-direction: column;
-    gap: 14px;
+    gap: 22px;
   }
   .head {
     display: flex;
@@ -168,7 +170,7 @@
     align-items: center;
     gap: 10px;
     flex-wrap: wrap;
-    margin-bottom: 8px;
+    margin-bottom: 20px;
   }
   .head h2 {
     margin: 0;
@@ -196,9 +198,5 @@
   tr.gap td {
     background: repeating-linear-gradient(135deg, transparent 0 8px, rgba(224, 165, 38, 0.05) 8px 16px);
   }
-  .err {
-    border-color: var(--error);
-    color: var(--error);
-    margin-bottom: 10px;
-  }
+
 </style>

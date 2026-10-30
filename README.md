@@ -17,6 +17,8 @@ Spieler, Inventare, Karte, Konsole und Online-Zeiten auf einen Blick – im Brow
 
 </div>
 
+Release history and upgrade notes: [Changelog](CHANGELOG.md).
+
 ## English / Deutsch, BlueMap, and inventory icons
 
 [Accounts, automatic backups, restore drills, readiness, resource packs, and CI](docs/operations.md) are documented in the operations runbook. Sign in as **admin** with your existing dashboard password; create viewer/operator accounts under **Users**.
@@ -43,10 +45,22 @@ Icons are pinned to [Owen1212055/mc-assets, Minecraft 26.3](https://github.com/O
 
 To override an icon or support another namespace, put a rendered PNG in `data/assets/icons/<namespace>/<item>.png`, e.g. `data/assets/icons/minecraft/chest.png` or `data/assets/icons/mymod/example.png`, then restart the dashboard. User icons take precedence over the bundled pack. The original client-JAR/raw-texture fallback is still supported. `BUNDLED_ASSETS_DIR` can point to another local pack; the default is `./game-assets`. Component-aware rendering now adds dyes/trims, potion colors, patterns, custom models, and locally installed profile skins using versioned models and user resource packs. See the [rendering setup](docs/operations.md#component-aware-item-icons-and-resource-packs) and [implemented project review](docs/review.md).
 
+The dashboard now uses a shared Tailwind styling foundation with a locally owned shadcn-svelte button and Bits UI interaction primitives. Desktop navigation lives in a sidebar; mobile navigation keeps three main destinations plus a **More** menu. Player pages open on **Inventory**, with **Player data** and operator-only **Actions** tabs. All new interface text is available in English and German.
+
+Other pages, player details, administrative controls, and the mobile menu load when opened. Console history loads when an operator opens the console; game language catalogs load when player details need them, and renderer metadata loads when inventory/item visuals need it. Icons and HUD sprites use private ETag revalidation. Renderer files carry their pack revision in the URL and use private caching; API state, authentication failures, and missing assets remain uncached. The Docker asset stage is independent of application source edits, and frontend-only dependencies are excluded from the runtime dependency stage. No deployment variables changed. See the [architecture roadmap](docs/architecture.md) for the completed milestone and subsequent work.
+
+World, Users/backups, Diagnostics, Map, Playtime, and sign-in now share responsive page and form patterns. World controls include searchable game rules and keyboard-accessible tabs. Account edits retain separate drafts; permissions and session revocation remain enforced by the backend. Diagnostics shows the game-language catalog actually used for the selected dashboard language, including its merged translation count and English fallback, rather than the server's default language. JSON export uses the selected language for this metadata and preserves raw responses.
+
+**Console completion and colors:** type a command prefix and use **Tab** to complete, **↑/↓** to select a suggestion, and **Enter** to accept a highlighted suggestion. Enter sends when no suggestion is selected. **Esc** closes the list; ↑/↓ on an empty command browse history, and the **History** button opens recent commands. Suggestions cover common commands, known arguments/game rules, online players (UUIDs for entity targets), locally installed item IDs, and commands from browser history. Suggestions are local hints, not a live server/plugin command registry; typing or selecting them never sends RCON commands. Item names load only when completing the item argument to `give`. Unknown/plugin commands can still be entered normally, and dangerous commands retain confirmation.
+
+Console output preserves Minecraft section-sign formatting and supports ANSI foreground colors (including 256-color and RGB), bold, italic, underline, and strikethrough. **Colors** switches to plain text, **Follow output** controls scrolling, and search filters recorded responses. Output is rendered as text and whitelisted styles; terminal actions and hyperlink control codes are ignored. Original replies remain intact in diagnostics and exports.
+
 For a repeatable browser smoke check after building and downloading assets:
 
 ```sh
 CHROMIUM_PATH=/usr/bin/google-chrome npm run test:smoke
+# Optional desktop/mobile screenshots from that isolated run:
+SMOKE_ARTIFACT_DIR=/tmp/mcdash-smoke npm run test:smoke
 ```
 
 The smoke check starts its own temporary mock server and database. It does not connect to a live Minecraft server.
@@ -334,10 +348,10 @@ Die RCON-Zugangsdaten werden nie an den Browser geschickt und nie protokolliert.
 Fehler gefunden oder eine Idee? Gern ein [Issue](../../issues) erstellen. Bei Problemen mit dem Datenformat hilft der **Debug-Export** sehr.
 
 ```bash
-npm install
+npm ci
 npm run mock      # Backend im Demo-Modus auf :8080 (Passwort "mock")
 npm run dev:web   # Frontend mit Hot-Reload auf :5173
-npm test          # 107 Tests (Parser, RCON-Protokoll, Online-Zeiten, API)
+npm test          # Parser, RCON-Protokoll, Online-Zeiten, API
 npm run check     # Typprüfung
 npm run build     # Produktions-Build
 ```
@@ -345,7 +359,7 @@ npm run build     # Produktions-Build
 | Ordner | Inhalt |
 |---|---|
 | `src/server` | Backend: Fastify, eigener RCON-Client, SNBT-Parser, SQLite (`node:sqlite`) |
-| `src/web` | Frontend: Svelte 5 + Vite |
+| `src/web` | Frontend: Svelte 5 + Vite + Tailwind; shared UI primitives in `components/ui` |
 | `src/shared` | gemeinsame Typen, Farbcode- und Textkomponenten-Parser |
 | `tests/fixtures` | **echte** Antworten eines Paper-26.3-Servers und Beispiele im alten Format |
 | `docs/` | [Datenformat und RCON-Verhalten](docs/datenformat.md), [Testserver aufsetzen](docs/testserver.md), [ursprünglicher Plan](docs/PLAN.md) |

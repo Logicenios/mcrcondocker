@@ -124,6 +124,27 @@ describe("Assets", () => {
     expect(assets.items("en")).toContainEqual({ id: "apple", name: "Apple" });
     expect(assets.items("de")).toContainEqual({ id: "apple", name: "Apfel" });
     expect(assets.translations("../../secrets")).toEqual(assets.translations("en"));
+    expect(assets.info("en")).toMatchObject({ language: "en_us", translations: 2 });
+    expect(assets.info("de")).toMatchObject({ language: "de_de", translations: 2 });
+    expect(assets.info()).toMatchObject({ language: "de_de", translations: 1 });
+  });
+
+  it("reports the English fallback when the requested German catalog is unavailable", () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "mcdash-catalog-source-"));
+    mkdirSync(path.join(dir, "lang"));
+    writeFileSync(path.join(dir, "lang/en_us.json"), JSON.stringify({ "item.minecraft.apple": "Apple" }));
+    const assets = new Assets(dir);
+    expect(assets.info("de")).toMatchObject({ language: "en_us", translations: 1 });
+    expect(new Assets("/nonexistent").info("en")).toMatchObject({ language: null, translations: 0 });
+  });
+
+  it("ignores malformed JAR language catalogs when reporting the selected source", () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "mcdash-catalog-jar-"));
+    writeFileSync(path.join(dir, "client.jar"), makeZip({
+      "assets/minecraft/lang/en_us.json": Buffer.from(JSON.stringify({ "item.minecraft.apple": "Apple", invalid: 123 })),
+      "assets/minecraft/lang/de_de.json": Buffer.from("null"),
+    }));
+    expect(new Assets(dir).info("de")).toMatchObject({ language: "en_us", translations: 1 });
   });
 
   it("ZipReader liest auch unkomprimierte Einträge", () => {

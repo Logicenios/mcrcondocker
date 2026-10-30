@@ -1,4 +1,9 @@
 <script lang="ts">
+  import { onMount } from "svelte";
+  import Panel from "../ui/Panel.svelte";
+  import Icon from "../ui/Icon.svelte";
+  import McText from "../McText.svelte";
+  import { consoleSegments } from "../../../shared/console-text";
   import { t as tr } from "../../lib/i18n.svelte";
   import type { AuditEntry } from "../../../shared/types";
   import { api } from "../../lib/api";
@@ -6,6 +11,7 @@
   import { live } from "../../lib/live.svelte";
 
   const PAGE = 100;
+  let search = $state("");
   let loaded = $state<AuditEntry[]>([]);
   let more = $state(false);
   let error = $state<string | null>(null);
@@ -23,7 +29,7 @@
     }
   }
 
-  $effect(() => {
+  onMount(() => {
     void load();
   });
 
@@ -31,67 +37,88 @@
   const entries = $derived.by(() => {
     const ids = new Set(loaded.map((e) => e.id));
     const all = [...live.audit.filter((e) => !ids.has(e.id)), ...loaded];
-    return filter === "all" ? all : all.filter((e) => e.source === filter);
+    return all.filter(
+      (entry) =>
+        (filter === "all" || entry.source === filter) &&
+        `${entry.label} ${entry.command} ${entry.actor ?? ""}`
+          .toLowerCase()
+          .includes(search.trim().toLowerCase()),
+    );
   });
 </script>
 
-<section class="panel">
-  <div class="head">
-    <h3>{tr("Aktionsprotokoll")}</h3>
-    <select bind:value={filter} aria-label="Filter">
-      <option value="all">{tr("Alles")}</option>
-      <option value="action">{tr("Nur Aktionen")}</option>
-      <option value="console">{tr("Nur Konsole")}</option>
-    </select>
-  </div>
-  <p class="faint small">{tr("Alles, was über das Dashboard am Server ausgeführt wurde (die letzten 5000 Einträge).")}</p>
+<Panel
+  title={tr("Aktionsprotokoll")}
+  description={tr(
+    "Alles, was über das Dashboard am Server ausgeführt wurde (die letzten 5000 Einträge).",
+  )}
+  icon="sessions"
+>
+  {#snippet actions()}<select bind:value={filter} aria-label={tr("Filter")}
+      ><option value="all">{tr("Alles")}</option><option value="action"
+        >{tr("Nur Aktionen")}</option
+      ><option value="console">{tr("Nur Konsole")}</option></select
+    >{/snippet}
+  <label class="inline-search"
+    ><Icon name="search" size={16} /><input
+      type="search"
+      placeholder={tr("Geladene Einträge durchsuchen")}
+      aria-label={tr("Protokoll durchsuchen")}
+      bind:value={search}
+    /></label
+  >
   {#if error}
     <div class="err">{error}</div>
   {/if}
   {#if !entries.length && !error}
-    <div class="faint">{tr("Noch keine Einträge.")}</div>
+    <div class="faint">
+      {tr(search ? "Keine passenden Einträge." : "Noch keine Einträge.")}
+    </div>
   {/if}
   <ul>
     {#each entries as e (e.id)}
       <li class:fail={!e.ok}>
-        <button class="line" onclick={() => (openId = openId === e.id ? null : e.id)} aria-expanded={openId === e.id}>
+        <button
+          class="line"
+          onclick={() => (openId = openId === e.id ? null : e.id)}
+          aria-expanded={openId === e.id}
+        >
           <span class="t faint">{dateTime(e.at)}</span>
-          <span class="badge">{e.source === "console" ? tr("Konsole") : tr("Aktion")}</span>
+          <span class="badge"
+            >{e.source === "console" ? tr("Konsole") : tr("Aktion")}</span
+          >
           {#if e.actor}<span class="faint">{e.actor}</span>{/if}
           <span class="lbl">{e.ok ? "" : "✕ "}{e.label}</span>
         </button>
         {#if openId === e.id}
           <div class="more">
-            <div class="mono cmd">{e.command.split("\n").map((c) => "/" + c).join("\n")}</div>
-            {#if e.output}<div class="mono out">{e.output}</div>{/if}
+            <div class="mono cmd">
+              {e.command
+                .split("\n")
+                .map((c) => "/" + c)
+                .join("\n")}
+            </div>
+            {#if e.output}<div class="mono out">
+                <McText segments={consoleSegments(e.output)} />
+              </div>{/if}
           </div>
         {/if}
       </li>
     {/each}
   </ul>
   {#if more}
-    <button class="btn small" onclick={() => load(loaded[loaded.length - 1]?.id)}>{tr("Ältere laden")}</button>
+    <button
+      class="btn small"
+      onclick={() => load(loaded[loaded.length - 1]?.id)}
+      >{tr("Ältere laden")}</button
+    >
   {/if}
-</section>
+</Panel>
 
 <style>
-  section {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-  }
-  h3 {
-    margin: 0;
-  }
-  .head {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 10px;
-  }
   ul {
     list-style: none;
-    margin: 0;
+    margin: 14px 0;
     padding: 0;
   }
   li {
@@ -104,7 +131,7 @@
     width: 100%;
     background: none;
     border: none;
-    padding: 6px 2px;
+    padding: 16px 2px;
     text-align: left;
     flex-wrap: wrap;
   }
@@ -138,8 +165,8 @@
   .err {
     color: var(--error);
   }
-  .small {
-    font-size: 12px;
-    margin: 0;
+  .line > span {
+    min-width: 0;
+    overflow-wrap: anywhere;
   }
 </style>
