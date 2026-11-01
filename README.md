@@ -43,11 +43,11 @@ The pack contains **1,658 Minecraft Java 26.3 inventory renders**, including 3D 
 
 Icons are pinned to [Owen1212055/mc-assets, Minecraft 26.3](https://github.com/Owen1212055/mc-assets/tree/bc96011714c0eb3770bd641a3b86459ad5f860c7); HUD sprites and language files come from the [26.3 asset mirror](https://github.com/InventivetalentDev/minecraft-assets/tree/6c088630459d8ca369ef0d6c07636d7d63a3b0f1). The downloader verifies the inventory archive's SHA-256 and writes source attribution to `game-assets/sources.json`. Minecraft game assets belong to Mojang Studios / Microsoft.
 
-To override an icon or support another namespace, put a rendered PNG in `data/assets/icons/<namespace>/<item>.png`, e.g. `data/assets/icons/minecraft/chest.png` or `data/assets/icons/mymod/example.png`, then restart the dashboard. User icons take precedence over the bundled pack. The original client-JAR/raw-texture fallback is still supported. `BUNDLED_ASSETS_DIR` can point to another local pack; the default is `./game-assets`. Component-aware rendering now adds dyes/trims, potion colors, patterns, custom models, and locally installed profile skins using versioned models and user resource packs. See the [rendering setup](docs/operations.md#component-aware-item-icons-and-resource-packs) and [implemented project review](docs/review.md).
+To override an icon or support another namespace, put a rendered PNG in `data/assets/icons/<namespace>/<item>.png`, e.g. `data/assets/icons/minecraft/chest.png` or `data/assets/icons/mymod/example.png`, then restart the dashboard. User icons take precedence over the bundled pack. The original client-JAR/raw-texture fallback is still supported. `BUNDLED_ASSETS_DIR` can point to another local pack; the default is `./game-assets`. Component-aware rendering now adds dyes/trims, potion colors, patterns, custom models, and locally installed profile skins using versioned models and user resource packs. See the [rendering setup](docs/operations.md#component-aware-item-icons-and-resource-packs).
 
 The dashboard now uses a shared Tailwind styling foundation with a locally owned shadcn-svelte button and Bits UI interaction primitives. Desktop navigation lives in a sidebar; mobile navigation keeps three main destinations plus a **More** menu. Player pages open on **Inventory**, with **Player data** and operator-only **Actions** tabs. All new interface text is available in English and German.
 
-Other pages, player details, administrative controls, and the mobile menu load when opened. Console history loads when an operator opens the console; game language catalogs load when player details need them, and renderer metadata loads when inventory/item visuals need it. Icons and HUD sprites use private ETag revalidation. Renderer files carry their pack revision in the URL and use private caching; API state, authentication failures, and missing assets remain uncached. The Docker asset stage is independent of application source edits, and frontend-only dependencies are excluded from the runtime dependency stage. No deployment variables changed. See the [architecture roadmap](docs/architecture.md) for the completed milestone and subsequent work.
+Other pages, player details, administrative controls, and the mobile menu load when opened. Console history loads when an operator opens the console; game language catalogs load when player details need them, and renderer metadata loads when inventory/item visuals need it. Icons and HUD sprites use private ETag revalidation. Renderer files carry their pack revision in the URL and use private caching; API state, authentication failures, and missing assets remain uncached. The Docker asset stage is independent of application source edits, and frontend-only dependencies are excluded from the runtime dependency stage. No deployment variables changed. See the [application architecture](docs/architecture.md).
 
 World, Users/backups, Diagnostics, Map, Playtime, and sign-in now share responsive page and form patterns. World controls include searchable game rules and keyboard-accessible tabs. Account edits retain separate drafts; permissions and session revocation remain enforced by the backend. Diagnostics shows the game-language catalog actually used for the selected dashboard language, including its merged translation count and English fallback, rather than the server's default language. JSON export uses the selected language for this metadata and preserves raw responses.
 
@@ -363,7 +363,7 @@ npm run build     # Produktions-Build
 | `src/web` | Frontend: Svelte 5 + Vite + Tailwind; shared UI primitives in `components/ui` |
 | `src/shared` | gemeinsame Typen, Farbcode- und Textkomponenten-Parser |
 | `tests/fixtures` | **echte** Antworten eines Paper-26.3-Servers und Beispiele im alten Format |
-| `docs/` | [Datenformat und RCON-Verhalten](docs/datenformat.md), [Testserver aufsetzen](docs/testserver.md), [ursprünglicher Plan](docs/PLAN.md) |
+| `docs/` | [Datenformat und RCON-Verhalten](docs/datenformat.md), [Testserver aufsetzen](docs/testserver.md) |
 
 **Technik:** Node.js 24 · TypeScript · Fastify · Svelte 5 · SQLite · Server-Sent Events · Docker (Multi-Arch)
 
@@ -385,3 +385,9 @@ npm run build     # Produktions-Build
 Quick start: enable RCON in `server.properties`, then run the container with `DASHBOARD_PASSWORD`, `RCON_HOST`, `RCON_PORT` and `RCON_PASSWORD` set, and open port 8080. Use `MOCK=true` for a demo without a server.
 
 </details>
+
+### Optional on-demand worlds and management automation
+
+The dashboard can display externally reported sleeping/starting/running/stopping/failed/unknown states, coordinate persistent maintenance holds, and manage per-world Chunky pause/resume and progress without waking Minecraft. It has no Docker access or start/stop/restart API; mc-router and lifecycle execution remain external. Optional Steward import adds operator-reviewed guest approvals, map-only player authentication, ranks, notifications and digests using the existing application and accounts.
+
+See [the configuration, API/storage contracts and migration guide](docs/on-demand.md). Features are disabled unless configured/imported. BlueMap stays an external embed with independently served tiles. World data/log inputs are read-only; no infrastructure deployment changes are included.

@@ -220,35 +220,15 @@ login explanation and cannot load the protected frame. An already loaded map
 cannot be erased from browser memory on revocation, but subsequent protected
 requests must fail the Caddy session check.
 
-### Apply the 1.2.2 fix image
+### Upgrade the dashboard image
 
-The `v1.2.2` tag triggers the fork's checked multi-architecture image build. After
-the Container release workflow succeeds, pull the versioned image on your deployment
-host:
+Use a versioned image from this repository's releases. Preserve the existing data
+volume, networks, secrets and proxy configuration. Upgrade only the dashboard
+service when choosing to deploy; publishing an image does not deploy it.
 
-```sh
-podman pull ghcr.io/logicenios/mcrcondocker:1.2.2
-```
-
-In your **existing deployment** service definition, change only the dashboard
-image to `ghcr.io/logicenios/mcrcondocker:1.2.2` and keep its existing shared
-network namespace, mounts, secrets and Caddy configuration. Recreate only the
-dashboard when you choose to deploy. For a Compose deployment using this repo's
-service name (`mc-dashboard`), the command is:
-
-```sh
-# Run from the directory containing your actual deployment Compose file,
-# after editing its dashboard image and retaining its networking configuration.
-podman compose up -d --no-deps --pull never mc-dashboard
-podman logs --tail 100 mc-dashboard
-podman exec mc-dashboard node -e "fetch('http://127.0.0.1:8080/healthz').then(async r=>{console.log(r.status,await r.text());process.exit(r.ok?0:1)})"
-podman exec mc-dashboard node -e "fetch('http://127.0.0.1:8080/readyz').then(async r=>{console.log(r.status,await r.text());process.exit(r.ok?0:1)})"
-```
-
-Use your deployment's dashboard service/container name if it differs; do not
-recreate Minecraft or replace the active Compose file with the standalone
-repository example. During Paper startup readiness may return 503 while liveness
-and dashboard login work. After startup confirm the operator map loads and a
-viewer is denied. Live Caddy authorization/plugin behavior is not proven by the
-local mocks and must be checked after your chosen deployment. Publishing an image
-does not deploy it or change the original upstream repository.
+For optional lifecycle observations, maintenance, Chunky, approval workflows and
+player map access, see [on-demand integration](on-demand.md). The dashboard has no
+container-power capability. Existing operator map authorization can use
+`/api/map/authorize`; player/operator map authorization can use
+`/map-access/authorize`. Both verify current sessions rather than trusting a
+browser-provided role.

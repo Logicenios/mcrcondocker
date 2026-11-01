@@ -311,10 +311,10 @@ describe("API", () => {
   it("Konsole: harmloser Befehl, gefährlicher Befehl braucht Bestätigung", async () => {
     const ok = await app.inject({ method: "POST", url: "/api/console", headers: { ...json, cookie }, payload: { command: "/seed" } });
     expect(ok.json().output).toBe("Seed: [4046814556654922723]");
-    const danger = await app.inject({ method: "POST", url: "/api/console", headers: { ...json, cookie }, payload: { command: "stop" } });
+    const danger = await app.inject({ method: "POST", url: "/api/console", headers: { ...json, cookie }, payload: { command: "reload" } });
     expect(danger.statusCode).toBe(409);
     expect(danger.json().needsConfirmation).toBe(true);
-    const confirmed = await app.inject({ method: "POST", url: "/api/console", headers: { ...json, cookie }, payload: { command: "stop", confirmed: true } });
+    const confirmed = await app.inject({ method: "POST", url: "/api/console", headers: { ...json, cookie }, payload: { command: "reload", confirmed: true } });
     expect(confirmed.statusCode).toBe(200);
   });
 

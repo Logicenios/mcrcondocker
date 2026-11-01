@@ -20,3 +20,25 @@ backups/
 *.db-wal
 *.db-shm
 *.partial
+
+# Local configuration, credentials and integration/runtime exports.
+.env.*
+!.env.example
+state/
+secrets/
+private/
+local/
+exports/
+*.db-journal
+*.sqlite-*
+*.sqlite3
+*.sqlite3-*
+*.pem
+*.key
+*.p12
+*.pfx
+__pycache__/
+*.pyc
+.codex/
+.vscode/
+.idea/

@@ -36,6 +36,11 @@ jobs:
             console.error('Expected vMAJOR.MINOR.PATCH, optionally followed by a prerelease suffix.');
             process.exit(1);
           }
+          const version = require('./package.json').version;
+          if (tag.slice(1) !== version) {
+            console.error('Release tag must match package.json version.');
+            process.exit(1);
+          }
           JS
 
       - uses: docker/setup-qemu-action@v3

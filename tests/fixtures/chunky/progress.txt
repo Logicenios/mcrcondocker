@@ -1,0 +1,1 @@
+[Chunky] Task running for world. Processed: 1048575 chunks (99.99%), ETA: 0:00:01, Rate: 100.0 cps, Current: 511, 511

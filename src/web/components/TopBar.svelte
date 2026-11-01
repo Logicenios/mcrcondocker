@@ -12,11 +12,16 @@
   let busy = $state(false);
 
   const s = $derived(live.status);
-  const statusMessage = $derived(s?.messageData ? formatDiagnostic(language.locale, s.messageData) : s?.message);
+  const statusMessage = $derived(s?.lifecycle?.errorData ? formatDiagnostic(language.locale,s.lifecycle.errorData) : s?.messageData ? formatDiagnostic(language.locale, s.messageData) : s?.message);
   const conn = $derived.by(() => {
     if (!live.liveConnected)
       return { cls: "error", label: "Dashboard nicht erreichbar" };
     if (!s) return { cls: "connecting", label: "Verbinde …" };
+    if (s.lifecycle?.enabled) {
+      const phase = s.lifecycle.state;
+      const labels = { sleeping: "Schläft", starting: "Startet", running: "Läuft", stopping: "Stoppt", failed: "Fehlgeschlagen", unknown: "Unbekannt" };
+      if (phase !== "running" || s.connection === "connected") return { cls: phase === "running" ? "ok" : phase === "failed" || phase === "unknown" ? "error" : "paused", label: labels[phase] };
+    }
     switch (s.connection) {
       case "connected":
         return { cls: "ok", label: "Verbunden" };

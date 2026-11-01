@@ -1,5 +1,18 @@
 import type { Locale } from "./translations.js";
 export const DIAGNOSTIC_MESSAGES = {
+  automationRejected: ["Minecraft hat den Automatisierungsbefehl abgelehnt. Originalantwort in der Diagnose prüfen.", "Minecraft rejected the automation command. Check the original response in diagnostics."],
+  managementUnavailable: ["Minecraft oder die Verwaltung ist nicht verfügbar.", "Minecraft or management is unavailable."],
+  managementInvalid: ["Ungültige Verwaltungsdaten.", "Invalid management data."],
+  managementTimeout: ["Minecraft-Start hat das Zeitlimit überschritten. Der Prozess wird nicht beendet.", "Minecraft startup exceeded its deadline. The process will not be killed."],
+  managementStale: ["Keine aktuelle Lebenszyklus-Beobachtung.", "No fresh lifecycle observation."],
+  managementHold: ["Der Wartungsschutz wurde noch nicht bestätigt.", "Maintenance protection has not been acknowledged yet."],
+  managementBusy: ["Ein Verwaltungsvorgang läuft bereits.", "A management operation is already running."],
+  managementConfirm: ["Bestätigung erforderlich.", "Confirmation required."],
+  managementPlayers: ["Spielerzahl ist nicht sicher null.", "Player count is not verified as zero."],
+  generationUnknown: ["Chunky-Status konnte nicht bestätigt werden.", "Chunky status could not be confirmed."],
+  powerExternal: ["Start, Stopp und Neustart werden außerhalb des Dashboards verwaltet.", "Start, stop and restart are managed outside the dashboard."],
+  mapCodeInvalid: ["Kartencode ungültig oder Zugriff nicht verfügbar.", "Map code invalid or access unavailable."],
+
   "listUnavailable": ["Kein unterstützter Spielerlisten-Befehl. Serverberechtigungen prüfen und Dashboard neu starten.", "No supported player-list command. Check server permissions and restart the dashboard."],
   "rconRefused": ["Verbindung abgelehnt. Wartet auf Minecraft RCON; Aktivierung und Port prüfen.", "Connection refused. Waiting for Minecraft RCON; check that RCON is enabled and the port is correct."],
   "rconHostNotFound": ["RCON-Host nicht gefunden", "RCON host not found"],

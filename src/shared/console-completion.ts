@@ -44,7 +44,6 @@ const COMMANDS: [string, string][] = [
   ["deop", "OP entziehen"],
   ["whitelist", "Whitelist verwalten"],
   ["save-all", "Welt speichern"],
-  ["stop", "Server stoppen"],
   ["execute", "Befehl im Kontext ausführen"],
   ["data", "NBT-Daten abfragen"],
   ["locate", "Weltstruktur suchen"],

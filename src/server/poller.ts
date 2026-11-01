@@ -198,6 +198,14 @@ export class Poller extends EventEmitter {
 
   /** Ein Abfragezyklus. */
   async cycle(): Promise<void> {
+    if (!this.rcon.accessGuard()) {
+      this.tracker.interrupt("rcon_error", Date.now());
+      this.online.clear();
+      this.onlineCount = null;
+      this.emitStatus();
+      this.emitPlayers(true);
+      return;
+    }
     if (this.rcon.state !== "connected") {
       // Erster Verbindungsaufbau: abwarten (nach "connected" wird sofort abgefragt)
       if (waitingForRcon(this.rcon)) { this.emitStatus(); return; }
@@ -421,9 +429,12 @@ export class Poller extends EventEmitter {
     }
   }
 
+  lifecycleStatus?: () => import("../shared/management.js").ManagementStatus;
+
   status(): ServerStatus {
     const conn = this.connectionState();
     return {
+      lifecycle: this.lifecycleStatus?.(),
       connection: conn,
       message: conn === "connecting" ? formatDiagnostic("en", diagnostic("rconWaiting"))
         : conn === "error" || conn === "auth_failed" ? (this.lastError ?? this.rcon.lastError ?? "No RCON connection") : null,

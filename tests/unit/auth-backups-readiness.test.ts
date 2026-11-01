@@ -5,7 +5,7 @@ import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { fixture } from "./helpers.js";
 import { Auth } from "../../src/server/auth.js";
-import { openDb, openMemoryDb } from "../../src/server/db/db.js";
+import { CURRENT_SCHEMA_VERSION, openDb, openMemoryDb } from "../../src/server/db/db.js";
 import { Repo } from "../../src/server/db/repo.js";
 import { Backups, restoreBackup, verifyBackup } from "../../src/server/backups.js";
 import { readiness } from "../../src/shared/readiness.js";
@@ -90,7 +90,7 @@ describe("consistent SQLite backups", () => {
       auth.createSession(auth.authenticate("admin", "admin-password")!);
       const service = new Backups(db, path.join(directory, "backups"), 2);
       const first = await service.create();
-      expect(verifyBackup(service.file(first.name)).schemaVersion).toBe(3);
+      expect(verifyBackup(service.file(first.name)).schemaVersion).toBe(CURRENT_SCHEMA_VERSION);
       expect(statSync(service.file(first.name)).mode & 0o777).toBe(0o600);
       const restoredFile = path.join(directory, "restore-check.db");
       await restoreBackup(service.file(first.name), restoredFile);

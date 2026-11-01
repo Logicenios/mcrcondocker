@@ -1,3 +1,8 @@
+import { isPowerCommand } from "../shared/dangerous.js";
+import { looksLikeError } from "./parse/world.js";
+import { Management } from "./management/service.js";
+import { Automation } from "./management/automation.js";
+import { registerManagementRoutes } from "./management/routes.js";
 import { diagnostic, DiagnosticError, formatDiagnostic, type DiagnosticMessage } from "../shared/diagnostic-messages.js";
 import { createHash } from "node:crypto";
 // HTTP-Server: REST-API, Server-Sent Events, statisches Frontend.
@@ -88,6 +93,37 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     if (!skin) return failure(req, reply, 404, diagnostic("apiSkinMissing"));
     return assetResponse(req, reply, skin, "image/png", true);
   });
+  const management = new Management(repo, config.management, async (command) => {
+    management.requireRunning();
+    const r = await rcon.send(command);
+    diag.recordRaw({ at: r.receivedAt, kind: "management", command, body: r.body, fragments: r.fragments, bytes: r.bytes, durationMs: r.durationMs });
+    return r.body;
+  }, (label, ok, output, actor) => deps.actions.audit("action", label, "", ok, output, actor));
+  const automation = new Automation(management, async command => {
+    management.requireRunning();
+    const r = await rcon.send(command);
+    if (!/\btellraw\b/.test(command)) diag.recordRaw({ at: r.receivedAt, kind: "automation", command, body: r.body, fragments: r.fragments, bytes: r.bytes, durationMs: r.durationMs });
+    if (looksLikeError(r.body) || /^Unknown command/i.test(r.body)) throw new DiagnosticError("automationRejected");
+    return r.body;
+  }, (label, ok, output, actor) => deps.actions.audit("action", label, "", ok, output, actor));
+  management.connected = () => rcon.state === "connected";
+  rcon.accessGuard = () => management.canPoll();
+  const observeAutomation = () => automation.observeServer(poller.status(), poller.summaries());
+  poller.on("event", observeAutomation);
+  poller.lifecycleStatus = () => management.status();
+  let managementWork: Promise<void> | undefined;
+  const managementTimer = setInterval(() => {
+    if (management.canPoll() && !managementWork) managementWork = management.refresh().catch(e => {
+      diag.warn("warn", "management-progress", e instanceof DiagnosticError ? e.messageData : diagnostic("generationUnknown"));
+    }).finally(() => { managementWork = undefined; });
+  }, 15000);
+  managementTimer.unref();
+  automation.start();
+  app.addHook("onClose", async () => {
+    clearInterval(managementTimer); poller.off("event", observeAutomation);
+    await automation.stop(); await managementWork;
+    poller.lifecycleStatus = undefined; rcon.accessGuard = () => true;
+  });
   const auth = new Auth(config.dashboardPassword, repo, config.sessionDays);
   const isSecure = (req: FastifyRequest) => (config.cookieSecure === "auto" ? req.protocol === "https" : config.cookieSecure);
   const token = (req: FastifyRequest) => parseCookies(req.headers.cookie)[COOKIE_NAME];
@@ -131,13 +167,15 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     req.user = auth.sessionUser(token(req));
     if (!req.user) return failure(req, reply, 401, diagnostic("apiLogin"));
     if (req.user.role === "viewer") {
-      const readable = new Set(["/api/status", "/api/players", "/api/sessions", "/api/assets", "/api/items", "/api/translations", "/api/events", "/api/settings/bluemap", "/api/bluemap/view"]);
+      const readable = new Set(["/api/management/status", "/api/status", "/api/players", "/api/sessions", "/api/assets", "/api/items", "/api/translations", "/api/events", "/api/settings/bluemap", "/api/bluemap/view"]);
       const safe = readable.has(url) || /^\/api\/(?:players|icon|gui|render|skin)\/[^/]+$/.test(url);
       if (url !== "/api/logout" && (!(req.method === "GET" || req.method === "HEAD") || !safe)) {
         return failure(req, reply, 403, diagnostic("apiOperator"));
       }
     }
   });
+
+  registerManagementRoutes(app, management, automation, req => auth.sessionUser(token(req)), isSecure);
 
   app.get("/healthz", async () => ({ ok: true }));
   app.get("/readyz", async (_req, reply) => {
@@ -231,7 +269,12 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   });
 
   // --- Daten ---------------------------------------------------------------
-  app.get("/api/status", async () => poller.status());
+  const visibleStatus = (role: string) => {
+    const status = poller.status();
+    if (role === "viewer" && status.lifecycle) return { ...status, lifecycle: { ...status.lifecycle, reason: null, holds: [], worlds: status.lifecycle.worlds.map(w => ({ ...w, raw: "" })) } };
+    return status;
+  };
+  app.get("/api/status", async req => visibleStatus(req.user!.role));
   app.get("/api/players", async () => poller.summaries());
 
   app.get<{ Params: { uuid: string } }>("/api/players/:uuid", async (req, reply) => {
@@ -278,6 +321,8 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
 
   app.post<{ Body: { command?: unknown; confirmed?: unknown } }>("/api/console", async (req, reply) => {
     if (typeof req.body?.command !== "string") return failure(req, reply, 400, diagnostic("apiCommand"));
+    // Power management is external. Namespaced and nested execute forms are blocked too.
+    if (isPowerCommand(req.body.command)) return failure(req, reply, 403, diagnostic("powerExternal"));
     const r = await deps.console.run(req.body.command, req.body.confirmed === true, resolveLocale(req.headers["accept-language"]), req.user!.username);
     if (r.kind === "invalid") return failure(req, reply, 400, r.messageData);
     if (r.kind === "needs_confirmation") return reply.code(409).send({ needsConfirmation: true, reason: r.reason });
@@ -386,6 +431,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
       const user = auth.sessionUser(token(req));
       if (!user) { res.end(); return; }
       if (user.role === "viewer" && (ev.type === "console" || ev.type === "audit")) return;
+      if (ev.type === "status") ev = { type: "status", status: visibleStatus(user.role) };
       res.write(`data: ${JSON.stringify(ev)}\n\n`);
     };
     res.write("retry: 3000\n\n");

@@ -1,3 +1,4 @@
+import type { ManagementStatus, GuestApproval } from "../../shared/management";
 import { formatDiagnostic, type DiagnosticMessage } from "../../shared/diagnostic-messages";
 import type { RenderIndex } from "../../shared/appearance";
 import type { DashboardUser, LoginSession, UserRole } from "../../shared/users";
@@ -52,6 +53,15 @@ export interface AssetsInfo {
 }
 
 export const api = {
+  management: () => request<ManagementStatus>("GET", "/api/management/status"),
+  hold: (reason:string) => request<ManagementStatus>("POST", "/api/management/holds", {reason}),
+  releaseHold: (id:string) => request<ManagementStatus>("DELETE", `/api/management/holds/${encodeURIComponent(id)}`, {}),
+  generation: (world:string,action:string) => request<ManagementStatus>("POST", "/api/management/generation", {world,action,confirmed:true}),
+  automation: () => request<{rules:unknown;approvals:GuestApproval[];error:DiagnosticMessage|null;generationClaims:unknown}>("GET", "/api/management/automation"),
+  importPreview: () => request<{digest:string;bundle:unknown;imported:boolean}>("GET", "/api/management/import"),
+  importSteward: (digest:string) => request("POST", "/api/management/import", {digest,confirmed:true}),
+  approveGuest: (name:string,approved:boolean) => request("POST", "/api/management/approvals", {name,approved}),
+  reconcilePermissions: () => request("POST", "/api/management/permissions", {confirmed:true}),
   renderIndex: () => request<RenderIndex>("GET", "/api/render/index"),
   backups: () => request<{ name: string; createdAt: number; bytes: number }[]>("GET", "/api/backups"),
   createBackup: () => request<{ name: string; createdAt: number; bytes: number }>("POST", "/api/backups", {}),

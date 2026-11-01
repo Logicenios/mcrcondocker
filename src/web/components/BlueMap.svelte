@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { live } from "../lib/live.svelte";
   import { session } from "../lib/session.svelte";
   import { diagnostic, DiagnosticError, formatDiagnostic } from "../../shared/diagnostic-messages";
   import { normalizeBlueMapUrl, type BlueMapAccess } from "../../shared/bluemap";
@@ -82,6 +83,9 @@
     </form>
   {/if}
   {#if error}<p role="alert" class="error">{t(error)}</p>{/if}
+  {#if live.status?.lifecycle?.enabled && live.status.lifecycle.state !== "running"}
+    <p role="status">{t("Gerenderte Karte bleibt verfügbar. Live-Spielerpositionen können veraltet sein; Kartenbesuche wecken Minecraft nicht.")}</p>
+  {/if}
   {#if mode === "bluemap" && url}
     {#if restricted}
       <p role="status">{formatDiagnostic(language.locale, diagnostic("blueMapOperator"))}</p>

@@ -71,6 +71,19 @@ const MIGRATIONS: string[] = [
   ALTER TABLE auth_sessions ADD COLUMN user_id INTEGER REFERENCES dashboard_users(id) ON DELETE CASCADE;
   ALTER TABLE audit_log ADD COLUMN actor TEXT;
   `,
+  // 4: Optional automation state. Existing accounts and game history are untouched.
+  `
+  CREATE TABLE management_state (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+  CREATE TABLE maintenance_holds (id TEXT PRIMARY KEY, owner TEXT NOT NULL, reason TEXT NOT NULL, created_at INTEGER NOT NULL);
+  CREATE TABLE automation_events (id INTEGER PRIMARY KEY, at INTEGER NOT NULL, kind TEXT NOT NULL, text TEXT NOT NULL);
+  CREATE INDEX automation_events_at ON automation_events(at);
+  CREATE TABLE guest_approvals (name TEXT PRIMARY KEY COLLATE NOCASE, uuid TEXT NOT NULL, requested_at INTEGER NOT NULL,
+    approved_by TEXT, state TEXT NOT NULL, error TEXT);
+  CREATE TABLE map_identities (uuid TEXT PRIMARY KEY, name TEXT NOT NULL UNIQUE COLLATE NOCASE, code_hash TEXT UNIQUE NOT NULL,
+    generation INTEGER NOT NULL DEFAULT 0, enabled INTEGER NOT NULL DEFAULT 1);
+  CREATE TABLE map_sessions (token_hash TEXT PRIMARY KEY, uuid TEXT NOT NULL REFERENCES map_identities(uuid), generation INTEGER NOT NULL, expires_at INTEGER NOT NULL);
+  CREATE TABLE notification_outbox (id TEXT PRIMARY KEY, at INTEGER NOT NULL, payload TEXT NOT NULL, attempts INTEGER NOT NULL DEFAULT 0, delivered_at INTEGER);
+  `,
 ];
 
 export const CURRENT_SCHEMA_VERSION = MIGRATIONS.length;

@@ -120,6 +120,7 @@ export interface TpsInfo {
 }
 
 export interface ServerStatus {
+  lifecycle?: import("./management.js").ManagementStatus;
   connection: ConnectionState;
   /** Fehlermeldung (bei error/auth_failed) */
   message: string | null;

@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.3.0](https://github.com/Logicenios/mcrcondocker/releases/tag/v1.3.0) - 2026-11-01
+
+- Add optional lifecycle observations with sleeping, starting, running, stopping, failed and unknown states; report startup deadlines without killing Minecraft.
+- Add persistent manual/job maintenance holds and a restricted observation/policy integration. Container power and mc-router remain external; the dashboard has no Docker access or start/stop/restart API. Power commands are also denied through its console.
+- Add per-world Chunky progress, confirmed pause/resume, explicit bounded generation and world-border controls. Missing tasks and imported completion claims are never treated as verified completion.
+- Add optional in-process guest approvals, map-only player authentication, rank/admin reconciliation, notifications and daily digests, with previewable state import.
+- Persist sleeping-world approvals as pending until the exact whitelist identity is verified. Require operator sessions for approval links; legacy bearer approvals and map credentials are unsupported.
+- Keep management and map authentication available without Minecraft, and suppress RCON commands when lifecycle observations prohibit polling.
+- Add English/German management controls, migration regression tests, API permission checks and browser coverage.
+- Remove historical development reports and deployment-specific status notes. Restrict Docker build inputs to an allowlist and exclude local configuration, credentials and runtime/export data.
+
+### Upgrade notes
+
+- Keep and back up the existing dashboard data volume. Schema migration 4 preserves existing accounts and history while adding optional management storage.
+- Ordinary RCON-only configuration remains supported; optional automation requires explicit configuration and import. Do not run overlapping automation workers.
+- See [optional integration and migration](docs/on-demand.md). Publishing this release does not deploy the external controller, mc-router or map authorization configuration.
+
+
 ## [1.2.2](https://github.com/Logicenios/mcrcondocker/releases/tag/v1.2.2) - 2026-10-31
 
 - Localize backend connection, console failure and API validation diagnostics using stable codes; default container logs to English independently of Minecraft item language.

@@ -29,6 +29,7 @@
       icon: "sessions",
       load: () => import("./world/AuditLog.svelte"),
     },
+    { id: "management", label: "Betrieb und Wartung", icon: "world", load: () => import("./world/ManagementPanel.svelte") },
   ];
   const tab = $derived(tabs.find((t) => t.id === router.param) ?? tabs[0]!);
 </script>

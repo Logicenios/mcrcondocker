@@ -1,8 +1,10 @@
+import { managementConfig, type ManagementConfig } from "./management/service.js";
 import { DiagnosticError } from "../shared/diagnostic-messages.js";
 // Konfiguration ausschließlich aus Umgebungsvariablen (siehe .env.example).
 import path from "node:path";
 
 export interface Config {
+  management: ManagementConfig;
   port: number;
   host: string;
   dataDir: string;
@@ -54,6 +56,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   if (!mock && !rconPassword) throw new ConfigError("configRequired", { field: "RCON_PASSWORD" });
   const secureRaw = (env.COOKIE_SECURE ?? "auto").trim().toLowerCase();
   return {
+    management: managementConfig(env),
     port: int(env, "PORT", 8080, 1, 65535),
     host: env.HOST || "0.0.0.0",
     dataDir,

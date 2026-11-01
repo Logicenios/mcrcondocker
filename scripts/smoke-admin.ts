@@ -8,6 +8,15 @@ export async function smokeAdmin(
   screenshot: (name: string) => Promise<void>,
 ) {
   try {
+    await page.goto(`${base}/#/world/management`);
+    await page.getByRole("heading", { name: "Operations and maintenance", exact: true }).waitFor();
+    await page.getByLabel("Reason", { exact: true }).fill("Smoke maintenance hold");
+    await page.getByRole("button", { name: "Add maintenance hold", exact: true }).click();
+    await page.locator(".row").filter({ hasText: "Smoke maintenance hold" }).waitFor();
+    await page.locator(".row").filter({ hasText: "Smoke maintenance hold" }).getByRole("button", { name: "Release", exact: true }).click();
+    await page.getByRole("dialog").getByRole("button", { name: "Run", exact: true }).click();
+    await page.locator(".row").filter({ hasText: "Smoke maintenance hold" }).waitFor({ state: "detached" });
+    assert.equal(await page.getByRole("button", { name: /^(Start|Stop|Restart)$/ }).count(), 0);
     await page.goto(`${base}/#/world`);
     await page
       .getByRole("heading", { name: "Game rules", exact: true })
@@ -257,6 +266,7 @@ export async function smokeAdmin(
     await page.getByLabel("Language").selectOption("de");
     const pages = [
       ["world", "Spielregeln"],
+      ["world/management", "Betrieb und Wartung"],
       ["world/nachrichten", "Private Nachricht"],
       ["world/banns", "Aktive Sperren"],
       ["world/protokoll", "Aktionsprotokoll"],

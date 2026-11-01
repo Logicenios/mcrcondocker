@@ -39,3 +39,13 @@ export function dangerousReason(command: string, extra: string[] = [], depth = 0
   }
   return null;
 }
+
+/** Lifecycle power belongs to the external controller, including namespaced execute forms. */
+export function isPowerCommand(command: string, depth = 0): boolean {
+  const tokens=command.trim().replace(/^\/+/, "").split(/\s+/);
+  const name=tokens[0]?.toLowerCase().split(":").at(-1);
+  if(name==="stop" || name==="restart")return true;
+  if(name!=="execute")return false;
+  if(depth>=8)return true;
+  return tokens.some((token,index)=>token.toLowerCase()==="run" && isPowerCommand(tokens.slice(index+1).join(" "),depth+1));
+}

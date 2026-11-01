@@ -126,6 +126,8 @@ export class RconClient extends EventEmitter {
     return this.queueHigh.length + this.queueNormal.length + (this.inFlight ? 1 : 0);
   }
 
+  accessGuard: () => boolean = () => true;
+
   start(): void {
     if (this._state !== "stopped" && this.socket) return;
     this._state = "disconnected";
@@ -160,6 +162,7 @@ export class RconClient extends EventEmitter {
   }
 
   send(command: string, priority: Priority = "normal", timeoutMs?: number): Promise<RconResponse> {
+    if (!this.accessGuard()) return Promise.reject(new RconError(diagnostic("managementUnavailable"), "not_connected"));
     if (this._state === "stopped") {
       return Promise.reject(new RconError(diagnostic("rconStopped"), "stopped"));
     }
@@ -294,6 +297,10 @@ export class RconClient extends EventEmitter {
 
   private pump(): void {
     if (this.inFlight || this._state !== "connected" || !this.socket) return;
+    if (!this.accessGuard()) {
+      this.failAll(new RconError(diagnostic("managementUnavailable"), "not_connected"));
+      return;
+    }
     const job = this.queueHigh.shift() ?? this.queueNormal.shift();
     if (!job) return;
     const commandId = this.allocId();
